@@ -19,7 +19,7 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 print_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 
 # Configuration
-OUTPUT_DIR="./linear-issues"
+OUTPUT_DIR="./pitches"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 TODAY=$(date +"%Y-%m-%d")
 
@@ -228,7 +228,7 @@ generate_output_filename() {
     if [[ -z "$OUTPUT_FILE" ]]; then
         # Create safe filename from title
         SAFE_TITLE=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
-        OUTPUT_FILE="${OUTPUT_DIR}/linear-issue-${TODAY}-${SAFE_TITLE}.md"
+        OUTPUT_FILE="${OUTPUT_DIR}/pitch-${TODAY}-${SAFE_TITLE}.md"
     fi
     
     mkdir -p "$(dirname "$OUTPUT_FILE")"
