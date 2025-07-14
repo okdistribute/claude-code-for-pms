@@ -26,9 +26,28 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
   try {
     await ack();
 
-    // For message shortcuts, the structure is different
-    const message_ts = shortcut.message.ts;
-    const channel = shortcut.channel.id;
+    // Debug the shortcut structure
+    console.log('Shortcut type:', shortcut.type);
+    console.log('Shortcut callback_id:', shortcut.callback_id);
+    
+    // For message shortcuts, extract channel and message info
+    let channel, message_ts;
+    
+    if (shortcut.message) {
+      // Message shortcut
+      message_ts = shortcut.message.ts;
+      channel = shortcut.channel.id;
+    } else if (shortcut.message_ts && shortcut.channel) {
+      // Alternative structure
+      message_ts = shortcut.message_ts;
+      channel = shortcut.channel;
+    } else {
+      console.error('Unable to extract channel and message info from shortcut:', shortcut);
+      throw new Error('Invalid shortcut payload');
+    }
+    
+    console.log('Channel ID:', channel);
+    console.log('Message TS:', message_ts);
     
     // Open a modal immediately
     const result = await client.views.open({
