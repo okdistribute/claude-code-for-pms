@@ -22,6 +22,13 @@
         "callback_id": "manual_feature_request",
         "description": "Create a feature request manually"
       }
+    ],
+    "workflow_steps": [
+      {
+        "name": "Create Linear Feature Request",
+        "callback_id": "create_linear_feature_request_step",
+        "description": "Create a feature request in Linear from workflow data"
+      }
     ]
   },
   "oauth_config": {

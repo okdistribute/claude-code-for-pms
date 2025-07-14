@@ -1,4 +1,4 @@
-const { App } = require('@slack/bolt');
+const { App, WorkflowStep } = require('@slack/bolt');
 const Anthropic = require('@anthropic-ai/sdk');
 const { LinearClient } = require('@linear/sdk');
 const axios = require('axios');
@@ -1000,11 +1000,10 @@ async function linkCustomerToIssue(issueId, customerName, originalMessage) {
   }
 }
 
-// Workflow Step Handlers
-
-// Handle workflow step edit (when user adds the step to a workflow)
-app.step('create_linear_feature_request_step', async ({ step, configure, ack, client }) => {
-  await ack();
+// Workflow Step Implementation
+const linearFeatureRequestStep = new WorkflowStep('create_linear_feature_request_step', {
+  edit: async ({ ack, step, configure }) => {
+    await ack();
 
   const blocks = [
     {
@@ -1106,12 +1105,10 @@ app.step('create_linear_feature_request_step', async ({ step, configure, ack, cl
     }
   ];
 
-  await configure({ blocks });
-});
-
-// Handle workflow step save (when user saves the step configuration)
-app.view('create_linear_feature_request_step', async ({ ack, view, update }) => {
-  await ack();
+    await configure({ blocks });
+  },
+  save: async ({ ack, step, view, update }) => {
+    await ack();
 
   const values = view.state.values;
   const title = values.title_input?.title?.value;
@@ -1144,19 +1141,11 @@ app.view('create_linear_feature_request_step', async ({ ack, view, update }) => 
     }
   ];
 
-  await update({ inputs, outputs });
-});
-
-// Handle workflow step execute (when the workflow runs)
-app.event('workflow_step_execute', async ({ event, complete, fail, client }) => {
-  const { callback_id, workflow_step } = event;
-  
-  if (callback_id !== 'create_linear_feature_request_step') {
-    return;
-  }
-
-  try {
-    const { inputs } = workflow_step;
+    await update({ inputs, outputs });
+  },
+  execute: async ({ step, complete, fail }) => {
+    try {
+      const { inputs } = step;
     
     const title = inputs.title?.value || 'Workflow Feature Request';
     const description = inputs.description?.value || 'Feature request created from workflow';
@@ -1266,7 +1255,11 @@ ${description}
       }
     });
   }
+}
 });
+
+// Register the workflow step with the app
+app.step(linearFeatureRequestStep);
 
 // Start the app
 (async () => {
