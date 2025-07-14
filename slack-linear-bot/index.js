@@ -292,20 +292,6 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       // Continue anyway - the issue was created successfully
     }
     
-    // Post confirmation as ephemeral message to the user only
-    let confirmationText = `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}`;
-    
-    // Add link info if we successfully linked the Slack thread
-    if (issue && permalinkResult?.permalink) {
-      confirmationText += `\n\n🔗 Slack thread linked to the issue`;
-    }
-    
-    await client.chat.postEphemeral({
-      channel: metadata.channel,
-      user: body.user.id,
-      text: confirmationText,
-    });
-    
   } catch (error) {
     logger.error(error);
     await client.chat.postEphemeral({
