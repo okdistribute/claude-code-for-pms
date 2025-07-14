@@ -894,3 +894,137 @@ Please return ONLY a valid JSON object (no additional text) with:
 }
 
 // Function to find or create a customer and link to issue
+async function linkCustomerToIssue(issueId, customerName, originalMessage) {
+  try {
+    // First, search for existing customers
+    const searchQuery = `
+      query SearchCustomers($name: String!) {
+        customers(filter: { name: { contains: $name } }) {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+    `;
+
+    const searchResponse = await axios.post('https://api.linear.app/graphql', {
+      query: searchQuery,
+      variables: { name: customerName }
+    }, {
+      headers: {
+        'Authorization': `${process.env.LINEAR_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    let customerId;
+    if (searchResponse.data.data?.customers?.nodes?.length > 0) {
+      // Use existing customer
+      customerId = searchResponse.data.data.customers.nodes[0].id;
+      console.log(`Found existing customer: ${customerName} (${customerId})`);
+    } else {
+      // Create new customer
+      const createCustomerMutation = `
+        mutation CreateCustomer($name: String!) {
+          customerCreate(input: { name: $name }) {
+            success
+            customer {
+              id
+              name
+            }
+          }
+        }
+      `;
+
+      const createResponse = await axios.post('https://api.linear.app/graphql', {
+        query: createCustomerMutation,
+        variables: { name: customerName }
+      }, {
+        headers: {
+          'Authorization': `${process.env.LINEAR_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (createResponse.data.data?.customerCreate?.success) {
+        customerId = createResponse.data.data.customerCreate.customer.id;
+        console.log(`Created new customer: ${customerName} (${customerId})`);
+      } else {
+        console.error('Failed to create customer:', createResponse.data);
+        return null;
+      }
+    }
+
+    // Link customer to issue
+    const linkMutation = `
+      mutation LinkCustomerToIssue($issueId: String!, $customerId: String!, $body: String) {
+        customerNeedCreate(input: { 
+          issueId: $issueId, 
+          customerId: $customerId,
+          body: $body
+        }) {
+          success
+          customerNeed {
+            id
+          }
+        }
+      }
+    `;
+
+    const linkResponse = await axios.post('https://api.linear.app/graphql', {
+      query: linkMutation,
+      variables: { 
+        issueId: issueId,
+        customerId: customerId,
+        body: originalMessage ? `Original message: ${originalMessage}` : null
+      }
+    }, {
+      headers: {
+        'Authorization': `${process.env.LINEAR_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (linkResponse.data.data?.customerNeedCreate?.success) {
+      return {
+        success: true,
+        customer: { id: customerId, name: customerName }
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error linking customer to issue:', error);
+    return null;
+  }
+}
+
+// Start the app
+(async () => {
+  // Fetch customer priority labels on startup
+  await fetchCustomerPriorityLabels();
+  
+  // When using Socket Mode, we need to start a basic HTTP server for Render health checks
+  const http = require('http');
+  const PORT = process.env.PORT || 3000;
+  
+  // Create a simple HTTP server for health checks
+  const server = http.createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('OK');
+    } else {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not Found');
+    }
+  });
+  
+  server.listen(PORT, () => {
+    console.log(`Health check server listening on port ${PORT}`);
+  });
+  
+  // Start the Slack app
+  await app.start();
+  console.log('⚡️ Slack Linear bot is running\!');
+})();
