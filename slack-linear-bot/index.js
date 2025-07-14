@@ -371,9 +371,7 @@ app.view('feature_request_modal', async ({ ack, body, client, logger }) => {
       
       if (customerLinkResult && customerLinkResult.success) {
         console.log(`✅ Successfully linked customer ${customerLinkResult.customer.name} to issue`);
-      } else {
-        console.log('⚠️ Failed to link customer to issue');
-      }
+      } 
     }
     
     // Get the Slack message permalink
@@ -894,12 +892,19 @@ Please return ONLY a valid JSON object (no additional text) with:
 }
 
 // Function to find or create a customer and link to issue
-async function linkCustomerToIssue(issueId, customerName, originalMessage) {
+async function linkCustomerToIssue(issueId, customerName, comment) {
+  if (!customerName || customerName.trim() === '') {
+    console.log('No customer name provided, skipping customer linking');
+    return null;
+  }
+
+  console.log('Linking customer with comment:', comment);
+
   try {
-    // First, search for existing customers
+    // First, try to find existing customer
     const searchQuery = `
-      query SearchCustomers($name: String!) {
-        customers(filter: { name: { contains: $name } }) {
+      query SearchCustomers($filter: CustomerFilter!) {
+        customers(filter: $filter) {
           nodes {
             id
             name
@@ -910,7 +915,13 @@ async function linkCustomerToIssue(issueId, customerName, originalMessage) {
 
     const searchResponse = await axios.post('https://api.linear.app/graphql', {
       query: searchQuery,
-      variables: { name: customerName }
+      variables: {
+        filter: {
+          name: {
+            containsIgnoreCase: customerName.trim()
+          }
+        }
+      }
     }, {
       headers: {
         'Authorization': `${process.env.LINEAR_API_KEY}`,
@@ -918,28 +929,41 @@ async function linkCustomerToIssue(issueId, customerName, originalMessage) {
       }
     });
 
-    let customerId;
+    console.log('Customer search response:', JSON.stringify(searchResponse.data, null, 2));
+
+    let customerId = null;
+
+    // Check if customer already exists
     if (searchResponse.data.data?.customers?.nodes?.length > 0) {
-      // Use existing customer
-      customerId = searchResponse.data.data.customers.nodes[0].id;
-      console.log(`Found existing customer: ${customerName} (${customerId})`);
-    } else {
-      // Create new customer
-      const createCustomerMutation = `
-        mutation CreateCustomer($name: String!) {
-          customerCreate(input: { name: $name }) {
+      const existingCustomer = searchResponse.data.data.customers.nodes[0];
+      customerId = existingCustomer.id;
+      console.log(`Found existing customer: ${existingCustomer.name} (${customerId})`);
+    } 
+    // If we still don't have a customer ID, log why
+    if (!customerId) {
+      console.log('No customer ID available - either not found and creation failed, or customer functionality not available');
+      return null;
+    }
+
+    // Now create a CustomerNeed and link it to the issue
+    if (customerId) {
+      const createNeedMutation = `
+        mutation CustomerNeedCreate($input: CustomerNeedCreateInput!) {
+          customerNeedCreate(input: $input) {
             success
-            customer {
-              id
-              name
-            }
           }
         }
       `;
 
-      const createResponse = await axios.post('https://api.linear.app/graphql', {
-        query: createCustomerMutation,
-        variables: { name: customerName }
+      const createNeedResponse = await axios.post('https://api.linear.app/graphql', {
+        query: createNeedMutation,
+        variables: {
+          input: {
+            customerId: customerId,
+            body: comment,
+            issueId: issueId
+          }
+        }
       }, {
         headers: {
           'Authorization': `${process.env.LINEAR_API_KEY}`,
@@ -947,58 +971,20 @@ async function linkCustomerToIssue(issueId, customerName, originalMessage) {
         }
       });
 
-      if (createResponse.data.data?.customerCreate?.success) {
-        customerId = createResponse.data.data.customerCreate.customer.id;
-        console.log(`Created new customer: ${customerName} (${customerId})`);
-      } else {
-        console.error('Failed to create customer:', createResponse.data);
+      console.log('Create customer need response:', JSON.stringify(createNeedResponse.data, null, 2));
+
+      if (createNeedResponse.data.errors) {
+        console.error('GraphQL errors creating customer need:', createNeedResponse.data.errors);
         return null;
       }
     }
 
-    // Link customer to issue
-    const linkMutation = `
-      mutation LinkCustomerToIssue($issueId: String!, $customerId: String!, $body: String) {
-        customerNeedCreate(input: { 
-          issueId: $issueId, 
-          customerId: $customerId,
-          body: $body
-        }) {
-          success
-          customerNeed {
-            id
-          }
-        }
-      }
-    `;
-
-    const linkResponse = await axios.post('https://api.linear.app/graphql', {
-      query: linkMutation,
-      variables: { 
-        issueId: issueId,
-        customerId: customerId,
-        body: originalMessage ? `Original message: ${originalMessage}` : null
-      }
-    }, {
-      headers: {
-        'Authorization': `${process.env.LINEAR_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (linkResponse.data.data?.customerNeedCreate?.success) {
-      return {
-        success: true,
-        customer: { id: customerId, name: customerName }
-      };
-    }
-
-    return null;
   } catch (error) {
-    console.error('Error linking customer to issue:', error);
+    console.error('Error linking customer to issue:', error.message);
     return null;
   }
 }
+
 
 // Workflow Step Implementation
 const linearFeatureRequestStep = new WorkflowStep('create_linear_feature_request_step', {
