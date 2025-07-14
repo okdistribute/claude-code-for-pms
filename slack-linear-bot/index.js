@@ -1,6 +1,7 @@
 const { App } = require('@slack/bolt');
 const Anthropic = require('@anthropic-ai/sdk');
 const { LinearClient } = require('@linear/sdk');
+const axios = require('axios');
 require('dotenv').config();
 
 // Initialize Slack app
@@ -23,6 +24,51 @@ const linear = new LinearClient({
 
 // Cache for customer priority labels
 let customerPriorityLabels = {};
+
+// Function to sync Linear issue with Slack thread using GraphQL directly
+async function syncLinearIssueWithSlack(issueId, slackUrl) {
+  const mutation = `
+    mutation AttachmentLinkSlack($issueId: String!, $url: String!) {
+      attachmentLinkSlack(issueId: $issueId, url: $url, syncToCommentThread: true) {
+        success
+        attachment {
+          id
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await axios.post('https://api.linear.app/graphql', {
+      query: mutation,
+      variables: { 
+        issueId: issueId,
+        url: slackUrl
+      }
+    }, {
+      headers: {
+        'Authorization': `${process.env.LINEAR_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Check for GraphQL errors
+    if (response.data.errors) {
+      console.error('❌ Linear API errors for issue:', issueId, response.data.errors);
+      return null;
+    }
+
+    if (response.data.data && response.data.data.attachmentLinkSlack) {
+      return response.data.data.attachmentLinkSlack;
+    }
+
+    console.error('❌ Unexpected Linear API response for issue:', issueId);
+    return null;
+  } catch (error) {
+    console.error('❌ Error syncing Linear issue with Slack:', issueId, error.message);
+    return null;
+  }
+}
 
 // Function to fetch and cache customer priority labels
 async function fetchCustomerPriorityLabels() {
@@ -228,30 +274,17 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       
       console.log('Slack permalink:', permalinkResult.permalink);
       
-      // Link the Slack thread to the Linear issue
+      // Link the Slack thread to the Linear issue using GraphQL directly
       if (issue && permalinkResult.permalink) {
-        try {
-          // Create a regular attachment linking to the Slack thread
-          // The attachmentLinkSlack method seems to have issues with the SDK
-          const attachmentResult = await linear.attachmentLinkSlack({
-            channel: metadata.channel,
+        const syncResult = await syncLinearIssueWithSlack(issue.id, permalinkResult.permalink);
+        
+        if (syncResult && syncResult.success) {
+          console.log('✅ Successfully linked Slack thread to Linear issue:', {
             issueId: issue.id,
-            latest: metadata.message_ts,
-            url: permalinkResult.permalink,
-            variables: {
-              channel: metadata.channel,
-              latest: metadata.message_ts,
-              issueId: issue.id,
-            }
+            attachmentId: syncResult.attachment?.id
           });
-          
-          console.log('Created Slack attachment:', {
-            attachmentId: attachment?.id,
-            attachmentUrl: attachment?.url,
-            issueId: issue.id
-          });
-        } catch (attachError) {
-          console.error('Failed to create Slack attachment:', attachError);
+        } else {
+          console.log('⚠️ Failed to sync Slack thread with Linear issue');
         }
       }
     } catch (linkError) {
@@ -261,6 +294,17 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     
     // Post confirmation as ephemeral message to the user only
     let confirmationText = `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}`;
+    
+    // Add link info if we successfully linked the Slack thread
+    if (issue && permalinkResult?.permalink) {
+      confirmationText += `\n\n🔗 Slack thread linked to the issue`;
+    }
+    
+    await client.chat.postEphemeral({
+      channel: metadata.channel,
+      user: body.user.id,
+      text: confirmationText,
+    });
     
   } catch (error) {
     logger.error(error);
