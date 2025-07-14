@@ -233,13 +233,13 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
         try {
           // Create a regular attachment linking to the Slack thread
           // The attachmentLinkSlack method seems to have issues with the SDK
-          const attachmentResult = await linear.attachmentCreate({
+          const attachmentResult = await linear.attachmentLinkSlack({
+            channel: metadata.channel,
             issueId: issue.id,
-            url: permalinkResult.permalink,
-            title: "Slack conversation"
+            latest: metadata.message_ts,
+            url: permalinkResult.permalink
           });
           
-          const attachment = await attachmentResult.attachment;
           console.log('Created Slack attachment:', {
             attachmentId: attachment?.id,
             attachmentUrl: attachment?.url,
@@ -248,9 +248,6 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
         } catch (attachError) {
           console.error('Failed to create Slack attachment:', attachError);
         }
-        
-        // Note: This creates a link attachment but doesn't enable full bidirectional sync
-        // Full sync is only available when creating issues through Linear's Slack UI
       }
     } catch (linkError) {
       console.error('Error linking Slack thread to Linear issue:', linkError);
@@ -260,17 +257,6 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     // Post confirmation as ephemeral message to the user only
     let confirmationText = `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}`;
     
-    // Add link info if we successfully linked the Slack thread
-    if (issue && permalinkResult?.permalink) {
-      confirmationText += `\n\n🔗 Slack thread linked to the issue (view-only)`;
-    }
-    
-    await client.chat.postEphemeral({
-      channel: metadata.channel,
-      user: body.user.id,
-      text: confirmationText,
-    });
-
   } catch (error) {
     logger.error(error);
     await client.chat.postEphemeral({
