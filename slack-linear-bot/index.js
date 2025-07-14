@@ -265,9 +265,22 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       url: issue.url
     });
     
+    // Link customer to the issue if customer name was extracted
+    if (analysis.customerName) {
+      console.log(`Attempting to link customer: ${analysis.customerName}`);
+      const customerLinkResult = await linkCustomerToIssue(issue.id, analysis.customerName);
+      
+      if (customerLinkResult && customerLinkResult.success) {
+        console.log(`✅ Successfully linked customer ${customerLinkResult.customer.name} to issue`);
+      } else {
+        console.log('⚠️ Failed to link customer to issue');
+      }
+    }
+    
     // Get the Slack message permalink
+    let permalinkResult = null;
     try {
-      const permalinkResult = await client.chat.getPermalink({
+      permalinkResult = await client.chat.getPermalink({
         channel: metadata.channel,
         message_ts: metadata.message_ts,
       });
@@ -291,6 +304,25 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       console.error('Error linking Slack thread to Linear issue:', linkError);
       // Continue anyway - the issue was created successfully
     }
+    
+    // Post confirmation message to the user
+    let confirmationText = `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}`;
+    
+    // Add customer info if available
+    if (analysis.customerName) {
+      confirmationText += `\n👤 Customer: ${analysis.customerName}`;
+    }
+    
+    // Add Slack thread link info if successful
+    if (permalinkResult?.permalink) {
+      confirmationText += `\n🔗 Slack thread linked to the issue`;
+    }
+    
+    await client.chat.postEphemeral({
+      channel: metadata.channel,
+      user: body.user.id,
+      text: confirmationText,
+    });
     
   } catch (error) {
     logger.error(error);
@@ -555,7 +587,7 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*Preview:*\n${analysis.preview}`,
+              text: `*Preview:*\n${analysis.preview}${analysis.customerName ? `\n\n*Customer:* ${analysis.customerName}` : ''}`,
             },
           },
         ],
@@ -604,7 +636,8 @@ Please return ONLY a valid JSON object (no additional text) with:
   "title": "A concise title for the Linear issue",
   "description": "The full feature request in markdown",
   "preview": "A 2-3 sentence summary for the Slack modal",
-  "customerPriority": "nice_to_have" | "must_have_soon" | "must_have_now"
+  "customerPriority": "nice_to_have" | "must_have_soon" | "must_have_now",
+  "customerName": "The name of the customer mentioned in the thread, or null if no specific customer is mentioned"
 }`;
 
   try {
@@ -663,6 +696,101 @@ Please return ONLY a valid JSON object (no additional text) with:
     description: 'Unable to analyze thread due to API error',
     preview: 'Error analyzing thread',
   };
+}
+
+// Function to find or create a customer and link to issue
+async function linkCustomerToIssue(issueId, customerName) {
+  if (!customerName || customerName.trim() === '') {
+    console.log('No customer name provided, skipping customer linking');
+    return null;
+  }
+
+  try {
+    // First, try to find existing customer
+    const searchQuery = `
+      query SearchCustomers($filter: CustomerFilter!) {
+        customers(filter: $filter) {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+    `;
+
+    const searchResponse = await axios.post('https://api.linear.app/graphql', {
+      query: searchQuery,
+      variables: {
+        filter: {
+          name: {
+            containsIgnoreCase: customerName.trim()
+          }
+        }
+      }
+    }, {
+      headers: {
+        'Authorization': `${process.env.LINEAR_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    let customerId = null;
+
+    // Check if customer already exists
+    if (searchResponse.data.data?.customers?.nodes?.length > 0) {
+      const existingCustomer = searchResponse.data.data.customers.nodes[0];
+      customerId = existingCustomer.id;
+      console.log(`Found existing customer: ${existingCustomer.name} (${customerId})`);
+    } 
+
+    // Now link the customer to the issue
+    if (customerId) {
+      const linkMutation = `
+        mutation UpdateIssue($issueId: String!, $input: IssueUpdateInput!) {
+          issueUpdate(id: $issueId, input: $input) {
+            success
+            issue {
+              id
+              customer {
+                id
+                name
+              }
+            }
+          }
+        }
+      `;
+
+      const linkResponse = await axios.post('https://api.linear.app/graphql', {
+        query: linkMutation,
+        variables: {
+          issueId: issueId,
+          input: {
+            customerId: customerId
+          }
+        }
+      }, {
+        headers: {
+          'Authorization': `${process.env.LINEAR_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (linkResponse.data.data?.issueUpdate?.success) {
+        console.log(`✅ Successfully linked customer ${customerName} to issue ${issueId}`);
+        return {
+          success: true,
+          customer: linkResponse.data.data.issueUpdate.issue.customer
+        };
+      } else {
+        console.error('Failed to link customer to issue:', linkResponse.data.errors);
+        return null;
+      }
+    }
+
+  } catch (error) {
+    console.error('Error linking customer to issue:', error.message);
+    return null;
+  }
 }
 
 // Start the app
