@@ -225,25 +225,7 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       
       // Link the Slack thread to the Linear issue
       if (issue && permalinkResult.permalink) {
-        const attachmentResult = await linear.request(`
-          mutation attachmentLinkSlack(
-            $issueId: String!
-            $url: String!
-            $syncToCommentThread: Boolean
-          ) {
-            attachmentLinkSlack(
-              issueId: $issueId
-              url: $url
-              syncToCommentThread: $syncToCommentThread
-            ) {
-              success
-              attachment {
-                id
-                url
-              }
-            }
-          }
-        `, {
+        const attachmentResult = await linear.attachmentLinkSlack({
           issueId: issue.id,
           url: permalinkResult.permalink,
           syncToCommentThread: true
