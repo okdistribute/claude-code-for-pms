@@ -21,10 +21,6 @@ const linear = new LinearClient({
   apiKey: process.env.LINEAR_API_KEY,
 });
 // Listen for shortcut trigger
-app.shortcut('open_asks_form', async ({ shortcut, ack, client, logger }) => {
-})
-
-// Listen for shortcut trigger
 app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger }) => {
   try {
     await ack();
