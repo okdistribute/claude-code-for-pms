@@ -41,7 +41,7 @@ async function syncLinearIssueWithSlack(issueId, slackUrl) {
   try {
     const response = await axios.post('https://api.linear.app/graphql', {
       query: mutation,
-      variables: { 
+      variables: {
         issueId: issueId,
         url: slackUrl
       }
