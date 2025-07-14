@@ -3,21 +3,31 @@ description: "Make a feature request for ditto"
 shortcut: "feature-request"
 ---
 
-I'm going to give you a slack thread. In the FEAT team in linear, please make
-feature request tickets based on the following
-slack thread. There could be more than one feature request mentioned on this
-slack thread. Intelligently try to parse out if this issue is tied to a
-particular customer and what that customer's name is. additionally, add a label
-for 'customer priority': either Nice to have, must have soon, or must have now
-(Blocker) 
-
-Once you've created the ticket(s), then look to see if there are any existing issues in linear on any team that look like they would be related to this ticket. Please mark them 'related to' in linear. Do not add them as links to the ticket, if you can't add related issues then just list them in a bulleted list in the text body of the feature request.
+I'm going to give you a slack thread, notion doc link, linear issue, or maybe
+just file paths.
 
 <thread>
 $ARGUMENTS
 </thread>
 
-Usie this format:
+Think deeply. Did I give you enough information to create a feature request? do you need to ask me for more conext before getitng strated?
+
+In the FEAT team in linear, please make feature request
+tickets based on the following
+slack thread. There could be more than one feature request mentioned on this
+slack thread. Intelligently try to parse out if this issue is tied to a
+particular customer and what that customer's name is. additionally, add a label
+for 'customer priority': either Nice to have, must have soon, or must have now
+(Blocker)
+
+Once you've created the ticket(s), then look to see if there are any existing
+issues in linear on any team that look like they would be related to this
+ticket. Please mark them 'related to' in linear. Do not add them as links to
+the ticket, if you can't add related issues then just list them in a bulleted
+list in the text body of the feature request.
+
+
+Use this format for output in the linear issue:
 
 Problem Statement
 
@@ -30,3 +40,4 @@ Why is it important to a customer? Is it blocking a rollout? Is it just annoying
 Suggested Solution
 
 If there's a clear thing that needs to be done "e.g. deliver X" then add it, otherwise leave this blank
+
