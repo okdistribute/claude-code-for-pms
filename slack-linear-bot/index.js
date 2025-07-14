@@ -141,12 +141,25 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     
     // Get the stored analysis from the modal's private metadata
     const analysis = metadata.analysis || {};
+    
+    // Validate that we have meaningful content
+    const finalTitle = title || analysis.title;
+    const finalDescription = analysis.description;
+    
+    if (!finalTitle || finalTitle === 'Feature Request from Slack' || !finalDescription || finalDescription === 'No description provided') {
+      await client.chat.postEphemeral({
+        channel: metadata.channel,
+        user: body.user.id,
+        text: '❌ Cannot create issue: Missing title or description. Please try again when the AI service is available.',
+      });
+      return;
+    }
 
     // Create Linear issue
     const response = await linear.createIssue({
       teamId: teamId,
-      title: title || analysis.title || 'Feature Request from Slack',
-      description: analysis.description || 'No description provided',
+      title: finalTitle,
+      description: finalDescription,
     });
 
     console.log('Linear response:', JSON.stringify(response, null, 2));
@@ -310,16 +323,18 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
         errorMessage = '🔐 Authentication Error: The Anthropic API key appears to be invalid.\n\nPlease check that ANTHROPIC_API_KEY is set correctly in your environment variables.';
       } else if (error.message === 'ANTHROPIC_RATE_LIMIT') {
         errorMessage = '⏱️ Rate Limit: Too many requests to the AI service.\n\nPlease try again in a few moments.';
+      } else if (error.message === 'ANTHROPIC_OVERLOADED') {
+        errorMessage = '🔥 Service Overloaded: The AI service is temporarily overloaded.\n\nPlease try again in a few moments.';
       } else if (error.message === 'ANTHROPIC_API_ERROR') {
         errorMessage = '❌ AI Service Error: Unable to connect to the AI service.\n\nPlease try again later or check your API configuration.';
       }
       
-      // Update modal with error message
+      // Update modal with error message - remove submit button to prevent bad issues
       await client.views.update({
         view_id: view_id,
         view: {
           type: 'modal',
-          callback_id: 'feature_request_modal',
+          callback_id: 'feature_request_error',  // Different callback to prevent submission
           title: {
             type: 'plain_text',
             text: 'Error',
@@ -509,6 +524,11 @@ Please return ONLY a valid JSON object (no additional text) with:
     // Check if it's a rate limit error
     if (error.status === 429 || error.message?.includes('429')) {
       throw new Error('ANTHROPIC_RATE_LIMIT');
+    }
+    
+    // Check if it's an overload error
+    if (error.status === 529 || error.message?.includes('529') || error.message?.includes('overloaded')) {
+      throw new Error('ANTHROPIC_OVERLOADED');
     }
     
     // Generic API error
