@@ -207,12 +207,17 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     }
 
     // Create Linear issue
-    const response = await linear.createIssue(issueData);
-
-    console.log('Linear response:', JSON.stringify(response, null, 2));
+    const issueResult = await linear.createIssue(issueData);
     
-    // Get the issue that was created to access its ID
-    const issue = await response.issue;
+    // The Linear SDK returns an IssuePayload, we need to get the actual issue
+    const issue = await issueResult.issue;
+    
+    console.log('Linear issue created:', {
+      id: issue.id,
+      identifier: issue.identifier,
+      title: issue.title,
+      url: issue.url
+    });
     
     // Get the Slack message permalink
     try {
@@ -242,7 +247,7 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     await client.chat.postEphemeral({
       channel: metadata.channel,
       user: body.user.id,
-      text: `✅ Feature request created: ${response.identifier} - ${response.title}\n${response.url}`,
+      text: `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}`,
     });
 
   } catch (error) {
