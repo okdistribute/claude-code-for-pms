@@ -8,6 +8,7 @@ This bot converts Slack threads into Linear feature requests using Claude AI to 
 - Automatically analyzes the thread using Claude
 - Formats the content according to your feature request template
 - Creates the issue in Linear with proper formatting
+- Automatically applies customer priority labels (Nice to have, Must have soon, Must have now)
 - Links the Slack thread to the Linear issue for bidirectional comment syncing
 - Posts confirmation back to the Slack thread
 
@@ -67,6 +68,15 @@ The bot will automatically link the Slack thread to the created Linear issue. Th
 - Comments added to the Slack thread will sync to the Linear issue
 - Comments added to the Linear issue will sync back to the Slack thread
 - Status updates (completed/cancelled) will notify the Slack thread
+
+## Customer Priority Labels
+
+The bot automatically detects and applies customer priority labels to issues. Make sure your Linear team has labels with these names:
+- "Nice to have" - For low priority requests
+- "Must have soon" - For medium priority requests  
+- "Must have now" or "Blocker" - For high priority requests
+
+The bot will search for these labels on startup and map them automatically. If the labels don't exist, the issue will be created without a priority label.
 
 ## Customization
 

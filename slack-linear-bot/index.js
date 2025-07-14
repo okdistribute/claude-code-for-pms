@@ -20,6 +20,44 @@ const anthropic = new Anthropic({
 const linear = new LinearClient({
   apiKey: process.env.LINEAR_API_KEY,
 });
+
+// Cache for customer priority labels
+let customerPriorityLabels = {};
+
+// Function to fetch and cache customer priority labels
+async function fetchCustomerPriorityLabels() {
+  try {
+    console.log('Fetching customer priority labels...');
+    
+    // Get the team
+    const team = await linear.team(process.env.LINEAR_TEAM_ID);
+    
+    // Get all labels for the team
+    const labels = await team.labels();
+    
+    // Filter for customer priority labels
+    const priorityLabels = labels.nodes.filter(label => 
+      label.name.toLowerCase().includes('nice to have') ||
+      label.name.toLowerCase().includes('must have soon') ||
+      label.name.toLowerCase().includes('must have now') 
+    );
+    
+    // Create a mapping
+    priorityLabels.forEach(label => {
+      if (label.name.toLowerCase().includes('nice to have')) {
+        customerPriorityLabels['nice_to_have'] = label.id;
+      } else if (label.name.toLowerCase().includes('must have soon')) {
+        customerPriorityLabels['must_have_soon'] = label.id;
+      } else if (label.name.toLowerCase().includes('must have now')) {
+        customerPriorityLabels['must_have_now'] = label.id;
+      }
+    });
+    
+    console.log('Customer priority labels found:', customerPriorityLabels);
+  } catch (error) {
+    console.error('Error fetching customer priority labels:', error);
+  }
+}
 // Listen for shortcut trigger
 app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger }) => {
   try {
@@ -155,12 +193,21 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       return;
     }
 
-    // Create Linear issue
-    const response = await linear.createIssue({
+    // Prepare issue data
+    const issueData = {
       teamId: teamId,
       title: finalTitle,
       description: finalDescription,
-    });
+    };
+    
+    // Add customer priority label if available
+    if (analysis.customerPriority && customerPriorityLabels[analysis.customerPriority]) {
+      issueData.labelIds = [customerPriorityLabels[analysis.customerPriority]];
+      console.log(`Adding customer priority label: ${analysis.customerPriority} (${customerPriorityLabels[analysis.customerPriority]})`);
+    }
+
+    // Create Linear issue
+    const response = await linear.createIssue(issueData);
 
     console.log('Linear response:', JSON.stringify(response, null, 2));
     
@@ -527,7 +574,8 @@ Please return ONLY a valid JSON object (no additional text) with:
 {
   "title": "A concise title for the Linear issue",
   "description": "The full feature request in markdown",
-  "preview": "A 2-3 sentence summary for the Slack modal"
+  "preview": "A 2-3 sentence summary for the Slack modal",
+  "customerPriority": "nice_to_have" | "must_have_soon" | "must_have_now"
 }`;
 
   try {
@@ -590,6 +638,9 @@ Please return ONLY a valid JSON object (no additional text) with:
 
 // Start the app
 (async () => {
+  // Fetch customer priority labels on startup
+  await fetchCustomerPriorityLabels();
+  
   // When using Socket Mode, we need to start a basic HTTP server for Render health checks
   const http = require('http');
   const PORT = process.env.PORT || 3000;
