@@ -151,11 +151,43 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
 async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id) {
   try {
     // Fetch the thread
-    const thread = await client.conversations.replies({
-      channel: channel,
-      ts: message_ts,
-      limit: 100,
-    });
+    let thread;
+    try {
+      thread = await client.conversations.replies({
+        channel: channel,
+        ts: message_ts,
+        limit: 100,
+      });
+    } catch (error) {
+      console.error('Error fetching thread:', error);
+      
+      // Update modal with error message
+      await client.views.update({
+        view_id: view_id,
+        view: {
+          type: 'modal',
+          callback_id: 'feature_request_modal',
+          title: {
+            type: 'plain_text',
+            text: 'Error',
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Close',
+          },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `⚠️ Unable to access the channel or message.\n\nPlease ensure:\n• The bot is added to the channel\n• You're using the shortcut on a message (not in the compose box)`,
+              },
+            },
+          ],
+        },
+      });
+      return;
+    }
 
     // Format thread for Claude
     const threadText = thread.messages.map(msg => {
