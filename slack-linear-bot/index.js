@@ -268,7 +268,7 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     // Link customer to the issue if customer name was extracted
     if (analysis.customerName) {
       console.log(`Attempting to link customer: ${analysis.customerName}`);
-      const customerLinkResult = await linkCustomerToIssue(issue.id, analysis.customerName);
+      const customerLinkResult = await linkCustomerToIssue(issue.id, analysis.customerName, analysis.customerPriority);
       
       if (customerLinkResult && customerLinkResult.success) {
         console.log(`✅ Successfully linked customer ${customerLinkResult.customer.name} to issue`);
@@ -699,10 +699,20 @@ Please return ONLY a valid JSON object (no additional text) with:
 }
 
 // Function to find or create a customer and link to issue
-async function linkCustomerToIssue(issueId, customerName) {
+async function linkCustomerToIssue(issueId, customerName, customerPriority) {
   if (!customerName || customerName.trim() === '') {
     console.log('No customer name provided, skipping customer linking');
     return null;
+  }
+
+  // Map customer priority to numeric value
+  let priorityValue = 1; // Default
+  if (customerPriority === 'must_have_now') {
+    priorityValue = 3;
+  } else if (customerPriority === 'must_have_soon') {
+    priorityValue = 2;
+  } else if (customerPriority === 'nice_to_have') {
+    priorityValue = 1;
   }
 
   try {
@@ -750,29 +760,33 @@ async function linkCustomerToIssue(issueId, customerName) {
       return null;
     }
 
-    // Now link the customer to the issue
+    // Now create a CustomerNeed and link it to the issue
     if (customerId) {
-      const linkMutation = `
-        mutation UpdateIssue($issueId: String!, $input: IssueUpdateInput!) {
-          issueUpdate(id: $issueId, input: $input) {
+      const createNeedMutation = `
+        mutation CustomerNeedCreate($input: CustomerNeedCreateInput!) {
+          customerNeedCreate(input: $input) {
             success
-            issue {
+            customerNeed {
               id
               customer {
                 id
                 name
+              }
+              issue {
+                id
               }
             }
           }
         }
       `;
 
-      const linkResponse = await axios.post('https://api.linear.app/graphql', {
-        query: linkMutation,
+      const createNeedResponse = await axios.post('https://api.linear.app/graphql', {
+        query: createNeedMutation,
         variables: {
-          issueId: issueId,
           input: {
-            customerId: customerId
+            customerId: customerId,
+            issueId: issueId,
+            priority: priorityValue
           }
         }
       }, {
@@ -782,21 +796,21 @@ async function linkCustomerToIssue(issueId, customerName) {
         }
       });
 
-      console.log('Link customer response:', JSON.stringify(linkResponse.data, null, 2));
+      console.log('Create customer need response:', JSON.stringify(createNeedResponse.data, null, 2));
 
-      if (linkResponse.data.errors) {
-        console.error('GraphQL errors linking customer:', linkResponse.data.errors);
+      if (createNeedResponse.data.errors) {
+        console.error('GraphQL errors creating customer need:', createNeedResponse.data.errors);
         return null;
       }
 
-      if (linkResponse.data.data?.issueUpdate?.success) {
-        console.log(`✅ Successfully linked customer ${customerName} to issue ${issueId}`);
+      if (createNeedResponse.data.data?.customerNeedCreate?.success) {
+        console.log(`✅ Successfully created customer need for ${customerName} on issue ${issueId}`);
         return {
           success: true,
-          customer: linkResponse.data.data.issueUpdate.issue.customer
+          customer: createNeedResponse.data.data.customerNeedCreate.customerNeed.customer
         };
       } else {
-        console.error('Failed to link customer to issue:', linkResponse.data.errors);
+        console.error('Failed to create customer need - no success in response');
         return null;
       }
     }
