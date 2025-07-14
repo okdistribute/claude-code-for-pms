@@ -812,8 +812,10 @@ for 'customer priority': one of:
 
 Once you've created the ticket(s), then look to see if there are any existing
 issues in linear that look like they would be related to this
-ticket. List those links in a bulleted list in the text body of the feature
-request. reate a feature request with this format:
+ticket. List those as links (https://...) to the issues in a bulleted list in the text body of the feature
+request. Don't just list the id number of the tickets, please. I would like the full URL to the ticket.
+
+Create a feature request with this format:
 
 ## Problem Statement
 What problem is the customer trying to solve? Detail everything you can learn about the use case.
