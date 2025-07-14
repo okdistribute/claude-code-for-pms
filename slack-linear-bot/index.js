@@ -26,7 +26,9 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
   try {
     await ack();
 
-    const { message_ts, channel } = shortcut;
+    // For message shortcuts, the structure is different
+    const message_ts = shortcut.message.ts;
+    const channel = shortcut.channel.id;
     
     // Open a modal immediately
     const result = await client.views.open({
