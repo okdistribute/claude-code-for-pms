@@ -5,60 +5,72 @@ Protocol (MCP) servers.
 
 ## 🚀 Getting Started
 
-**New to Claude or MCP?** No problem! We've created a complete setup guide just for you:
-
-### 📚 **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**
-
-This guide will walk you through:
-- Installing Claude Code (5 minutes)
-- Getting your API keys (15-20 minutes) 
-- Running the automated setup (5 minutes)
-- Creating your first feature request
-
 ---
 
 ## Overview
 
-This system allows you to automatically generate well-structured Linear issues following the Shape Up methodology by pulling data from:
+This system sets up your Claude environment for optimal use as a PM.
+
+Sets up servers for pulling in external sources:
 - **Slack** threads and channel discussions  
 - **Linear** existing issues for context
 - **Notion** documentation pages
 - **Local code files** for technical analysis
 - **Meeting Transcripts** for detailed context
 
-## Quick Start
 
-### 1. Test Your Setup
+### 1. Setup MCP servers
+
+Follow the 📚 **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**
 
 Make sure everything is working:
 
 ```bash
-./test-mcp-connections.sh
+./scripts/test-mcp-connections.sh
 ```
 
 You should see green checkmarks for all services.
 
-### 2. Interactive Mode (Recommended)
+### 2. Create feature request
 
-The easiest way to create your first issue:
+A feature request can come from a slack thread, where colleagues from many
+sides of the organization will chime in on implementation details or
+requirements to further understand the problem asynchronously. 
+
+This information is difficult to process and we want to standardize this
+information in a form so that feature requests can be organized in linear.
+
+To make it easier to translate a slack thread into a feature request format, there is a command tool you can add to your claude setup. 
+
+Copy `commands/feature-request.md` to `~/.claude/commands/feature-request.md`
+
+To use it, simply type:
+```
+/feature-request https://dittolive.slack.com/archives/C068TSL9668/p1751888194097889
+```
+
+
+
+### 2. Generate shape up pitch
+
+Once you've received one or more feature requests, reviewed them and tied them
+to customers, you then can move into the planning stage to get this work
+scheduled with engineering. In this stage, you'll need to write a shape-up
+pitch based on the feature request. This tool helps you create a first draft
+given as much context as possible.
+
+You should provide as much detail, including relevant files or folders in the
+codebase so that the AI Agent can grab build engineering context for the pitch
+itself.
+
+You should always review, edit, and check the output for correctness. This is
+just intended as a first draft of your pitch, and you are ultimately
+responsible for the content so please do read it before sending it to the
+betting table.
 
 ```bash
 ./generate-pitch.sh --interactive
 ```
-
-The script will prompt you for everything it needs!
-
-### 3. Working with Slack Threads
-
-The tool supports Slack thread URLs:
-
-```bash
-# Using a thread URL (recommended)
-./generate-pitch.sh \
-  --slack-thread "https://workspace.slack.com/archives/C123ABC/p1234567890123456"
-
-```
-### 4. Command Line Mode
 
 If you prefer to specify everything upfront:
 
@@ -68,6 +80,7 @@ If you prefer to specify everything upfront:
   --title "Composite Indexes" \
   --team-id "QE" \
   --customer "Acme Corp" \
+  --linear-issue FEAT-7 \
   --slack-thread "https://workspace.slack.com/archives/C123ABC/p1234567890123456" \
   --notion-page "https://www.notion.so/getditto/Multi-key-Small-Peer-indexes-2299d9829a3280dda0b3fecbbc210ca1?source=copy_link"
   --files "../ditto/core/query" 

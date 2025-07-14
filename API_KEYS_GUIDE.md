@@ -105,7 +105,7 @@ This guide provides step-by-step instructions for obtaining API keys for Slack, 
 
 1. **Go to Linear Settings**
    - Open Linear in your browser
-   - Click your profile picture (bottom-left)
+   - Click the organization name in the top left
    - Select **"Settings"**
 
 2. **Navigate to API**
