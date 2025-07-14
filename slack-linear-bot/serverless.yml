@@ -1,0 +1,20 @@
+service: slack-linear-bot
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  environment:
+    SLACK_BOT_TOKEN: ${env:SLACK_BOT_TOKEN}
+    SLACK_SIGNING_SECRET: ${env:SLACK_SIGNING_SECRET}
+    ANTHROPIC_API_KEY: ${env:ANTHROPIC_API_KEY}
+    LINEAR_API_KEY: ${env:LINEAR_API_KEY}
+    LINEAR_TEAM_ID: ${env:LINEAR_TEAM_ID}
+
+functions:
+  slack:
+    handler: lambda.handler
+    events:
+      - http:
+          path: slack/events
+          method: post
+          cors: true

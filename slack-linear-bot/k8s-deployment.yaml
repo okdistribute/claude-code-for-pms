@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-linear-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slack-linear-bot
+  template:
+    metadata:
+      labels:
+        app: slack-linear-bot
+    spec:
+      containers:
+      - name: bot
+        image: your-registry/slack-linear-bot:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: SLACK_BOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: slack-secrets
+              key: bot-token
+        - name: SLACK_SIGNING_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: slack-secrets
+              key: signing-secret
+        - name: SLACK_APP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: slack-secrets
+              key: app-token
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-keys
+              key: anthropic
+        - name: LINEAR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-keys
+              key: linear
