@@ -20,6 +20,9 @@ const anthropic = new Anthropic({
 const linear = new LinearClient({
   apiKey: process.env.LINEAR_API_KEY,
 });
+// Listen for shortcut trigger
+app.shortcut('open_asks_form', async ({ shortcut, ack, client, logger }) => {
+})
 
 // Listen for shortcut trigger
 app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger }) => {
@@ -37,10 +40,6 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
       // Message shortcut
       message_ts = shortcut.message.ts;
       channel = shortcut.channel.id;
-    } else if (shortcut.message_ts && shortcut.channel) {
-      // Alternative structure
-      message_ts = shortcut.message_ts;
-      channel = shortcut.channel;
     } else {
       console.error('Unable to extract channel and message info from shortcut:', shortcut);
       throw new Error('Invalid shortcut payload');
@@ -218,7 +217,49 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id)
     }).join('\n\n');
 
     // Analyze with Claude
-    const analysis = await analyzeThread(threadText);
+    let analysis;
+    try {
+      analysis = await analyzeThread(threadText);
+    } catch (error) {
+      console.error('Error in thread analysis:', error);
+      
+      let errorMessage = '⚠️ Unable to analyze the thread.';
+      
+      if (error.message === 'ANTHROPIC_AUTH_ERROR') {
+        errorMessage = '🔐 Authentication Error: The Anthropic API key appears to be invalid.\n\nPlease check that ANTHROPIC_API_KEY is set correctly in your environment variables.';
+      } else if (error.message === 'ANTHROPIC_RATE_LIMIT') {
+        errorMessage = '⏱️ Rate Limit: Too many requests to the AI service.\n\nPlease try again in a few moments.';
+      } else if (error.message === 'ANTHROPIC_API_ERROR') {
+        errorMessage = '❌ AI Service Error: Unable to connect to the AI service.\n\nPlease try again later or check your API configuration.';
+      }
+      
+      // Update modal with error message
+      await client.views.update({
+        view_id: view_id,
+        view: {
+          type: 'modal',
+          callback_id: 'feature_request_modal',
+          title: {
+            type: 'plain_text',
+            text: 'Error',
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Close',
+          },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: errorMessage,
+              },
+            },
+          ],
+        },
+      });
+      return;
+    }
 
     // Update the modal with the analysis
     await client.views.update({
@@ -337,36 +378,63 @@ Why is it important to a customer? Is it blocking a rollout? Is it just annoying
 ## Suggested Solution
 If there's a clear thing that needs to be done, add it, otherwise leave this blank.
 
-Return a JSON object with:
-- title: A concise title for the Linear issue
-- description: The full feature request in markdown
-- preview: A 2-3 sentence summary for the Slack modal`;
-
-  const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
-    max_tokens: 2000,
-    messages: [{
-      role: 'user',
-      content: prompt,
-    }],
-  });
+Please return ONLY a valid JSON object (no additional text) with:
+{
+  "title": "A concise title for the Linear issue",
+  "description": "The full feature request in markdown",
+  "preview": "A 2-3 sentence summary for the Slack modal"
+}`;
 
   try {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: prompt,
+      }],
+    });
+
     // Extract JSON from Claude's response
     const text = response.content[0].text;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    console.log('Claude response:', text);
+    
+    // Try to parse the entire response first
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      // If that fails, try to extract JSON from the text
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        // Find the last closing brace to ensure we get complete JSON
+        const jsonStr = jsonMatch[0];
+        const lastBrace = jsonStr.lastIndexOf('}');
+        const cleanJson = jsonStr.substring(0, lastBrace + 1);
+        return JSON.parse(cleanJson);
+      }
     }
-  } catch (e) {
-    console.error('Error parsing Claude response:', e);
+  } catch (error) {
+    console.error('Error calling Anthropic API:', error);
+    
+    // Check if it's an authentication error
+    if (error.status === 401 || error.message?.includes('401') || error.message?.includes('authentication')) {
+      throw new Error('ANTHROPIC_AUTH_ERROR');
+    }
+    
+    // Check if it's a rate limit error
+    if (error.status === 429 || error.message?.includes('429')) {
+      throw new Error('ANTHROPIC_RATE_LIMIT');
+    }
+    
+    // Generic API error
+    throw new Error('ANTHROPIC_API_ERROR');
   }
 
-  // Fallback
+  // Fallback (shouldn't reach here)
   return {
     title: 'Feature Request from Slack',
-    description: response.content[0].text,
-    preview: 'Feature request created from Slack thread',
+    description: 'Unable to analyze thread due to API error',
+    preview: 'Error analyzing thread',
   };
 }
 
