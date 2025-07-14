@@ -43,6 +43,8 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
     
     console.log('Channel ID:', channel);
     console.log('Message TS:', message_ts);
+    console.log('Channel type:', shortcut.channel?.type);
+    console.log('Is private:', shortcut.channel?.is_private);
     
     // Open a modal immediately
     const result = await client.views.open({
@@ -121,7 +123,7 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
     });
 
     // Fetch and analyze the thread in the background
-    analyzeThreadAndUpdateModal(client, channel, message_ts, result.view.id);
+    analyzeThreadAndUpdateModal(client, channel, message_ts, result.view.id, shortcut.user.id);
 
   } catch (error) {
     logger.error(error);
@@ -164,7 +166,7 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
   }
 });
 
-async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id) {
+async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id, user_id) {
   try {
     // Fetch the thread
     let thread;
@@ -173,36 +175,117 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id)
         channel: channel,
         ts: message_ts,
         limit: 100,
+        inclusive: true,
       });
     } catch (error) {
       console.error('Error fetching thread:', error);
+      console.error('Channel:', channel);
+      console.error('Message TS:', message_ts);
       
-      // Update modal with error message
-      await client.views.update({
-        view_id: view_id,
-        view: {
-          type: 'modal',
-          callback_id: 'feature_request_modal',
-          title: {
-            type: 'plain_text',
-            text: 'Error',
-          },
-          close: {
-            type: 'plain_text',
-            text: 'Close',
-          },
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `⚠️ Unable to access the channel or message.\n\nPlease ensure:\n• The bot is added to the channel\n• You're using the shortcut on a message (not in the compose box)`,
-              },
+      // Try to fetch just the single message as a fallback
+      try {
+        const result = await client.conversations.history({
+          channel: channel,
+          latest: message_ts,
+          limit: 1,
+          inclusive: true,
+        });
+        
+        if (result.messages && result.messages.length > 0) {
+          thread = { messages: [result.messages[0]] };
+        } else {
+          throw new Error('No message found');
+        }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+        
+        // Create a minimal feature request without thread context
+        const analysis = {
+          title: 'Feature Request from Slack',
+          description: '## Problem Statement\n[Unable to access thread content]\n\n## Justification\n[Please fill in]\n\n## Suggested Solution\n[Please fill in]',
+          preview: 'Unable to analyze thread content. Please fill in the details manually.',
+        };
+        
+        // Update modal with manual entry form
+        await client.views.update({
+          view_id: view_id,
+          view: {
+            type: 'modal',
+            callback_id: 'feature_request_modal',
+            title: {
+              type: 'plain_text',
+              text: 'Create Feature Request',
             },
-          ],
-        },
-      });
-      return;
+            submit: {
+              type: 'plain_text',
+              text: 'Create',
+            },
+            close: {
+              type: 'plain_text',
+              text: 'Cancel',
+            },
+            private_metadata: JSON.stringify({ 
+              message_ts, 
+              channel,
+              analysis 
+            }),
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: '⚠️ Unable to access the thread. Please enter the details manually:',
+                },
+              },
+              {
+                type: 'input',
+                block_id: 'title_block',
+                label: {
+                  type: 'plain_text',
+                  text: 'Title',
+                },
+                element: {
+                  type: 'plain_text_input',
+                  action_id: 'title_input',
+                  placeholder: {
+                    type: 'plain_text',
+                    text: 'Enter feature request title',
+                  },
+                },
+              },
+              {
+                type: 'input',
+                block_id: 'team_block',
+                label: {
+                  type: 'plain_text',
+                  text: 'Linear Team',
+                },
+                element: {
+                  type: 'static_select',
+                  action_id: 'team_select',
+                  initial_option: {
+                    text: {
+                      type: 'plain_text',
+                      text: 'Feature Requests (FEAT)',
+                    },
+                    value: process.env.LINEAR_TEAM_ID,
+                  },
+                  options: [
+                    {
+                      text: {
+                        type: 'plain_text',
+                        text: 'Feature Requests (FEAT)',
+                      },
+                      value: process.env.LINEAR_TEAM_ID,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        });
+        return;
+      }
     }
 
     // Format thread for Claude
@@ -258,9 +341,10 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id)
     }
 
     // Update the modal with the analysis
-    await client.views.update({
-      view_id: view_id,
-      view: {
+    try {
+      await client.views.update({
+        view_id: view_id,
+        view: {
         type: 'modal',
         callback_id: 'feature_request_modal',
         title: {
@@ -339,6 +423,9 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id)
         ],
       },
     });
+    } catch (updateError) {
+      console.error('Error updating modal:', updateError);
+    }
 
   } catch (error) {
     console.error('Error analyzing thread:', error);
