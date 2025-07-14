@@ -237,7 +237,12 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
             channel: metadata.channel,
             issueId: issue.id,
             latest: metadata.message_ts,
-            url: permalinkResult.permalink
+            url: permalinkResult.permalink,
+            variables: {
+              channel: metadata.channel,
+              latest: metadata.message_ts,
+              issueId: issue.id,
+            }
           });
           
           console.log('Created Slack attachment:', {
