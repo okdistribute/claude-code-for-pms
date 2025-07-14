@@ -15,6 +15,12 @@
         "type": "message",
         "callback_id": "create_feature_request",
         "description": "Convert this thread to a Linear feature request"
+      },
+      {
+        "name": "Manual Feature Request",
+        "type": "global",
+        "callback_id": "manual_feature_request",
+        "description": "Create a feature request manually"
       }
     ]
   },

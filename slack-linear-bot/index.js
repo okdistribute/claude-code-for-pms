@@ -173,20 +173,157 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
   }
 });
 
-// Handle modal submission
-app.view('feature_request_modal', async ({ ack, body, view, client, logger }) => {
+// Listen for global shortcut - manual feature request creation
+app.shortcut('manual_feature_request', async ({ shortcut, ack, client, logger }) => {
   try {
     await ack();
 
-    const metadata = JSON.parse(view.private_metadata);
-    const title = view.state.values.title_block.title_input.value;
-    const teamId = view.state.values.team_block.team_select.selected_option.value;
+    console.log('Manual feature request shortcut triggered');
+    
+    // Open modal for manual feature request entry
+    await client.views.open({
+      trigger_id: shortcut.trigger_id,
+      view: {
+        type: 'modal',
+        callback_id: 'manual_feature_request_modal',
+        title: {
+          type: 'plain_text',
+          text: 'Create Feature Request',
+        },
+        submit: {
+          type: 'plain_text',
+          text: 'Create',
+        },
+        close: {
+          type: 'plain_text',
+          text: 'Cancel',
+        },
+        private_metadata: JSON.stringify({ 
+          channel: shortcut.channel?.id || 'unknown',
+          user: shortcut.user.id 
+        }),
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '📝 *Manual Feature Request*\n\nFill out the form below to create a feature request:',
+            },
+          },
+          {
+            type: 'input',
+            block_id: 'title_block',
+            label: {
+              type: 'plain_text',
+              text: 'Title *',
+            },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'title_input',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Enter a clear, concise title for the feature request',
+              },
+            },
+          },
+          {
+            type: 'input',
+            block_id: 'description_block',
+            label: {
+              type: 'plain_text',
+              text: 'Description *',
+            },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'description_input',
+              multiline: true,
+              placeholder: {
+                type: 'plain_text',
+                text: 'Describe the problem, justification, and suggested solution...',
+              },
+            },
+          },
+          {
+            type: 'input',
+            block_id: 'customer_block',
+            label: {
+              type: 'plain_text',
+              text: 'Customer Name',
+            },
+            optional: true,
+            element: {
+              type: 'plain_text_input',
+              action_id: 'customer_input',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Enter customer name (optional)',
+              },
+            },
+          },
+          {
+            type: 'input',
+            block_id: 'priority_block',
+            label: {
+              type: 'plain_text',
+              text: 'Customer Priority',
+            },
+            optional: true,
+            element: {
+              type: 'static_select',
+              action_id: 'priority_select',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Select priority level',
+              },
+              options: [
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Nice to have',
+                  },
+                  value: 'nice_to_have',
+                },
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Must have soon',
+                  },
+                  value: 'must_have_soon',
+                },
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: 'Must have now (Blocker)',
+                  },
+                  value: 'must_have_now',
+                },
+              ],
+            },
+          },
+
+        ],
+      },
+    });
+
+  } catch (error) {
+    logger.error(error);
+  }
+});
+
+// Handle modal submission
+app.view('feature_request_modal', async ({ ack, body, client, logger }) => {
+  try {
+    await ack();
+
+    const metadata = JSON.parse(body.view.private_metadata);
+    const title = body.view.state.values.title_block.title_input.value;
+    const teamId = process.env.LINEAR_TEAM_ID; // Always use FEAT team
     
     // Get the stored analysis from the modal's private metadata
     const analysis = metadata.analysis || {};
     
     // Check if there's a manual description input (for fallback cases)
-    const manualDescription = view.state.values.description_block?.description_input?.value;
+    const manualDescription = body.view.state.values.description_block?.description_input?.value;
     
     // Validate that we have meaningful content
     const finalTitle = title || analysis.title;
@@ -277,6 +414,131 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
   }
 });
 
+// Handle manual feature request modal submission
+app.view('manual_feature_request_modal', async ({ ack, body, client, logger }) => {
+  try {
+    await ack();
+
+    const values = body.view.state.values;
+    const metadata = JSON.parse(body.view.private_metadata);
+    
+    const title = values.title_block.title_input.value;
+    const description = values.description_block.description_input.value;
+    const customerName = values.customer_block.customer_input.value || null;
+    const priority = values.priority_block.priority_select.selected_option?.value || null;
+    const teamId = process.env.LINEAR_TEAM_ID; // Always use FEAT team
+
+    console.log('Manual feature request submission:', { title, description, customerName, priority, teamId });
+
+    // Create Linear issue directly (no Claude analysis needed)
+    const issueDescription = `**Manually submitted feature request**
+
+${description}
+
+---
+*Submitted by: <@${metadata.user}>*
+*Channel: <#${metadata.channel}>*`;
+
+    const createIssueResponse = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.LINEAR_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: `
+          mutation CreateIssue($input: IssueCreateInput!) {
+            issueCreate(input: $input) {
+              success
+              issue {
+                id
+                identifier
+                title
+                url
+              }
+            }
+          }
+        `,
+        variables: {
+          input: {
+            title: title,
+            description: issueDescription,
+            teamId: teamId,
+          },
+        },
+      }),
+    });
+
+    const createIssueData = await createIssueResponse.json();
+    console.log('Linear issue creation response:', createIssueData);
+
+    if (!createIssueData.data?.issueCreate?.success) {
+      throw new Error(`Failed to create Linear issue: ${JSON.stringify(createIssueData.errors)}`);
+    }
+
+    const issueId = createIssueData.data.issueCreate.issue.id;
+    const issueUrl = createIssueData.data.issueCreate.issue.url;
+    const issueIdentifier = createIssueData.data.issueCreate.issue.identifier;
+
+    // Link customer to the issue if provided
+    if (customerName) {
+      const customerNeedResponse = await fetch('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.LINEAR_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `
+            mutation CreateCustomerNeed($input: CustomerNeedCreateInput!) {
+              customerNeedCreate(input: $input) {
+                success
+                customerNeed {
+                  id
+                }
+              }
+            }
+          `,
+          variables: {
+            input: {
+              issueId: issueId,
+              body: `Customer: ${customerName}${priority ? `\nPriority: ${priority.replace('_', ' ')}` : ''}`,
+            },
+          },
+        }),
+      });
+
+      const customerNeedData = await customerNeedResponse.json();
+      console.log('Customer need creation response:', customerNeedData);
+    }
+
+    // Send confirmation message to the channel
+    await client.chat.postMessage({
+      channel: metadata.channel,
+      text: `✅ Feature request created successfully!`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `✅ *Feature request created successfully!*\n\n*Title:* ${title}\n*Linear Issue:* <${issueUrl}|${issueIdentifier}>${customerName ? `\n*Customer:* ${customerName}` : ''}${priority ? `\n*Priority:* ${priority.replace('_', ' ')}` : ''}\n\n*Submitted by:* <@${metadata.user}>`,
+          },
+        },
+      ],
+    });
+
+  } catch (error) {
+    logger.error('Error handling manual feature request submission:', error);
+    
+    // Send error message to user
+    const metadata = JSON.parse(body.view.private_metadata);
+    await client.chat.postMessage({
+      channel: metadata.channel,
+      text: `❌ Failed to create feature request: ${error.message}`,
+    });
+  }
+});
+
 async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id, user_id, originalMessageText) {
   try {
     // Fetch the thread
@@ -344,7 +606,7 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
           preview: 'Unable to analyze thread content. Please fill in the details manually.',
         };
         
-        // Update modal with manual entry form
+        // Update modal with manual entry form (no team selector)
         await client.views.update({
           view_id: view_id,
           view: {
@@ -390,34 +652,6 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
                     type: 'plain_text',
                     text: 'Enter feature request title',
                   },
-                },
-              },
-              {
-                type: 'input',
-                block_id: 'team_block',
-                label: {
-                  type: 'plain_text',
-                  text: 'Linear Team',
-                },
-                element: {
-                  type: 'static_select',
-                  action_id: 'team_select',
-                  initial_option: {
-                    text: {
-                      type: 'plain_text',
-                      text: 'Feature Requests (FEAT)',
-                    },
-                    value: process.env.LINEAR_TEAM_ID,
-                  },
-                  options: [
-                    {
-                      text: {
-                        type: 'plain_text',
-                        text: 'Feature Requests (FEAT)',
-                      },
-                      value: process.env.LINEAR_TEAM_ID,
-                    },
-                  ],
                 },
               },
               {
@@ -498,7 +732,7 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
       return;
     }
 
-    // Update the modal with the analysis
+    // Update the modal with the analysis (no team selector - always use FEAT team)
     try {
       await client.views.update({
         view_id: view_id,
@@ -528,7 +762,7 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '✅ *Thread analyzed successfully!*\n\nReview and edit the details below before creating the feature request:',
+              text: '✅ *Thread analyzed successfully!*\n\nReview and edit the details below before creating the feature request (will be created in FEAT team):',
             },
           },
           {
@@ -542,34 +776,6 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
               type: 'plain_text_input',
               action_id: 'title_input',
               initial_value: analysis.title,
-            },
-          },
-          {
-            type: 'input',
-            block_id: 'team_block',
-            label: {
-              type: 'plain_text',
-              text: 'Linear Team',
-            },
-            element: {
-              type: 'static_select',
-              action_id: 'team_select',
-              initial_option: {
-                text: {
-                  type: 'plain_text',
-                  text: 'Feature Requests (FEAT)',
-                },
-                value: process.env.LINEAR_TEAM_ID,
-              },
-              options: [
-                {
-                  text: {
-                    type: 'plain_text',
-                    text: 'Feature Requests (FEAT)',
-                  },
-                  value: process.env.LINEAR_TEAM_ID,
-                },
-              ],
             },
           },
           {
@@ -688,130 +894,3 @@ Please return ONLY a valid JSON object (no additional text) with:
 }
 
 // Function to find or create a customer and link to issue
-async function linkCustomerToIssue(issueId, customerName, comment) {
-  if (!customerName || customerName.trim() === '') {
-    console.log('No customer name provided, skipping customer linking');
-    return null;
-  }
-
-  console.log('Linking customer with comment:', comment);
-
-  try {
-    // First, try to find existing customer
-    const searchQuery = `
-      query SearchCustomers($filter: CustomerFilter!) {
-        customers(filter: $filter) {
-          nodes {
-            id
-            name
-          }
-        }
-      }
-    `;
-
-    const searchResponse = await axios.post('https://api.linear.app/graphql', {
-      query: searchQuery,
-      variables: {
-        filter: {
-          name: {
-            containsIgnoreCase: customerName.trim()
-          }
-        }
-      }
-    }, {
-      headers: {
-        'Authorization': `${process.env.LINEAR_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    console.log('Customer search response:', JSON.stringify(searchResponse.data, null, 2));
-
-    let customerId = null;
-
-    // Check if customer already exists
-    if (searchResponse.data.data?.customers?.nodes?.length > 0) {
-      const existingCustomer = searchResponse.data.data.customers.nodes[0];
-      customerId = existingCustomer.id;
-      console.log(`Found existing customer: ${existingCustomer.name} (${customerId})`);
-    } 
-    // If we still don't have a customer ID, log why
-    if (!customerId) {
-      console.log('No customer ID available - either not found and creation failed, or customer functionality not available');
-      return null;
-    }
-
-    // Now create a CustomerNeed and link it to the issue
-    if (customerId) {
-      const createNeedMutation = `
-        mutation CustomerNeedCreate($input: CustomerNeedCreateInput!) {
-          customerNeedCreate(input: $input) {
-            success
-          }
-        }
-      `;
-
-      const createNeedResponse = await axios.post('https://api.linear.app/graphql', {
-        query: createNeedMutation,
-        variables: {
-          input: {
-            customerId: customerId,
-            body: comment,
-            issueId: issueId
-          }
-        }
-      }, {
-        headers: {
-          'Authorization': `${process.env.LINEAR_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      console.log('Create customer need response:', JSON.stringify(createNeedResponse.data, null, 2));
-
-      if (createNeedResponse.data.errors) {
-        console.error('GraphQL errors creating customer need:', createNeedResponse.data.errors);
-        return null;
-      }
-    }
-
-  } catch (error) {
-    console.error('Error linking customer to issue:', error.message);
-    return null;
-  }
-}
-
-// Start the app
-(async () => {
-  // Fetch customer priority labels on startup
-  await fetchCustomerPriorityLabels();
-  
-  // When using Socket Mode, we need to start a basic HTTP server for Render health checks
-  const http = require('http');
-  const PORT = process.env.PORT || 3000;
-  
-  // Create a simple HTTP server for health checks
-  const server = http.createServer((req, res) => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('OK');
-    } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not Found');
-    }
-  });
-  
-  server.listen(PORT, () => {
-    console.log(`Health check server listening on port ${PORT}`);
-  });
-  
-  // Start the Slack app
-  await app.start();
-  console.log('⚡️ Slack Linear bot is running!');
-})();
-
-// Handle loading modal (no action needed, just prevent errors)
-app.view('feature_request_loading', async ({ ack }) => {
-  await ack();
-  // Modal was closed during loading - no action needed
-});
