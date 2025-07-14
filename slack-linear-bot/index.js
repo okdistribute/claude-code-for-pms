@@ -440,6 +440,26 @@ Please return ONLY a valid JSON object (no additional text) with:
 
 // Start the app
 (async () => {
-  await app.start(process.env.PORT || 3000);
+  // When using Socket Mode, we need to start a basic HTTP server for Render health checks
+  const http = require('http');
+  const PORT = process.env.PORT || 3000;
+  
+  // Create a simple HTTP server for health checks
+  const server = http.createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('OK');
+    } else {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not Found');
+    }
+  });
+  
+  server.listen(PORT, () => {
+    console.log(`Health check server listening on port ${PORT}`);
+  });
+  
+  // Start the Slack app
+  await app.start();
   console.log('⚡️ Slack Linear bot is running!');
 })();
