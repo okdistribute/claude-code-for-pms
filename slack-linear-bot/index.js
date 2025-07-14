@@ -734,6 +734,8 @@ async function linkCustomerToIssue(issueId, customerName) {
       }
     });
 
+    console.log('Customer search response:', JSON.stringify(searchResponse.data, null, 2));
+
     let customerId = null;
 
     // Check if customer already exists
@@ -742,6 +744,11 @@ async function linkCustomerToIssue(issueId, customerName) {
       customerId = existingCustomer.id;
       console.log(`Found existing customer: ${existingCustomer.name} (${customerId})`);
     } 
+    // If we still don't have a customer ID, log why
+    if (!customerId) {
+      console.log('No customer ID available - either not found and creation failed, or customer functionality not available');
+      return null;
+    }
 
     // Now link the customer to the issue
     if (customerId) {
@@ -774,6 +781,13 @@ async function linkCustomerToIssue(issueId, customerName) {
           'Content-Type': 'application/json'
         }
       });
+
+      console.log('Link customer response:', JSON.stringify(linkResponse.data, null, 2));
+
+      if (linkResponse.data.errors) {
+        console.error('GraphQL errors linking customer:', linkResponse.data.errors);
+        return null;
+      }
 
       if (linkResponse.data.data?.issueUpdate?.success) {
         console.log(`✅ Successfully linked customer ${customerName} to issue ${issueId}`);
