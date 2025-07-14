@@ -1000,6 +1000,274 @@ async function linkCustomerToIssue(issueId, customerName, originalMessage) {
   }
 }
 
+// Workflow Step Handlers
+
+// Handle workflow step edit (when user adds the step to a workflow)
+app.step('create_linear_feature_request_step', async ({ step, configure, ack, client }) => {
+  await ack();
+
+  const blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '*Configure Linear Feature Request Step*\n\nSet up the fields for creating feature requests in your workflow:'
+      }
+    },
+    {
+      type: 'input',
+      block_id: 'title_input',
+      element: {
+        type: 'plain_text_input',
+        action_id: 'title',
+        placeholder: {
+          type: 'plain_text',
+          text: 'Feature request title'
+        }
+      },
+      label: {
+        type: 'plain_text',
+        text: 'Title'
+      }
+    },
+    {
+      type: 'input',
+      block_id: 'description_input',
+      element: {
+        type: 'plain_text_input',
+        action_id: 'description',
+        multiline: true,
+        placeholder: {
+          type: 'plain_text',
+          text: 'Feature request description'
+        }
+      },
+      label: {
+        type: 'plain_text',
+        text: 'Description'
+      }
+    },
+    {
+      type: 'input',
+      block_id: 'customer_input',
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'customer_name',
+        placeholder: {
+          type: 'plain_text',
+          text: 'Customer name (optional)'
+        }
+      },
+      label: {
+        type: 'plain_text',
+        text: 'Customer Name'
+      }
+    },
+    {
+      type: 'input',
+      block_id: 'priority_input',
+      optional: true,
+      element: {
+        type: 'static_select',
+        action_id: 'priority',
+        placeholder: {
+          type: 'plain_text',
+          text: 'Select priority'
+        },
+        options: [
+          {
+            text: {
+              type: 'plain_text',
+              text: 'Nice to have'
+            },
+            value: 'nice_to_have'
+          },
+          {
+            text: {
+              type: 'plain_text',
+              text: 'Must have soon'
+            },
+            value: 'must_have_soon'
+          },
+          {
+            text: {
+              type: 'plain_text',
+              text: 'Must have now (Blocker)'
+            },
+            value: 'must_have_now'
+          }
+        ]
+      },
+      label: {
+        type: 'plain_text',
+        text: 'Priority'
+      }
+    }
+  ];
+
+  await configure({ blocks });
+});
+
+// Handle workflow step save (when user saves the step configuration)
+app.view('create_linear_feature_request_step', async ({ ack, view, update }) => {
+  await ack();
+
+  const values = view.state.values;
+  const title = values.title_input?.title?.value;
+  const description = values.description_input?.description?.value;
+  const customerName = values.customer_input?.customer_name?.value;
+  const priority = values.priority_input?.priority?.selected_option?.value;
+
+  const inputs = {
+    title: { value: title || '' },
+    description: { value: description || '' },
+    customer_name: { value: customerName || '' },
+    priority: { value: priority || '' }
+  };
+
+  const outputs = [
+    {
+      type: 'text',
+      name: 'issue_id',
+      label: 'Linear Issue ID'
+    },
+    {
+      type: 'text', 
+      name: 'issue_url',
+      label: 'Linear Issue URL'
+    },
+    {
+      type: 'text',
+      name: 'issue_identifier', 
+      label: 'Linear Issue Identifier'
+    }
+  ];
+
+  await update({ inputs, outputs });
+});
+
+// Handle workflow step execute (when the workflow runs)
+app.event('workflow_step_execute', async ({ event, complete, fail, client }) => {
+  const { callback_id, workflow_step } = event;
+  
+  if (callback_id !== 'create_linear_feature_request_step') {
+    return;
+  }
+
+  try {
+    const { inputs } = workflow_step;
+    
+    const title = inputs.title?.value || 'Workflow Feature Request';
+    const description = inputs.description?.value || 'Feature request created from workflow';
+    const customerName = inputs.customer_name?.value;
+    const priority = inputs.priority?.value;
+
+    console.log('Executing workflow step:', { title, description, customerName, priority });
+
+    // Create the Linear issue
+    const issueDescription = `**Feature request from Slack workflow**
+
+${description}
+
+---
+*Created via workflow automation*`;
+
+    const createIssueResponse = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.LINEAR_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: `
+          mutation CreateIssue($input: IssueCreateInput!) {
+            issueCreate(input: $input) {
+              success
+              issue {
+                id
+                identifier
+                title
+                url
+              }
+            }
+          }
+        `,
+        variables: {
+          input: {
+            title: title,
+            description: issueDescription,
+            teamId: process.env.LINEAR_TEAM_ID,
+            labelIds: priority && customerPriorityLabels[priority] ? [customerPriorityLabels[priority]] : undefined
+          },
+        },
+      }),
+    });
+
+    const createIssueData = await createIssueResponse.json();
+    
+    if (!createIssueData.data?.issueCreate?.success) {
+      throw new Error(`Failed to create Linear issue: ${JSON.stringify(createIssueData.errors)}`);
+    }
+
+    const issue = createIssueData.data.issueCreate.issue;
+    console.log('Workflow created Linear issue:', issue);
+
+    // Link customer if provided
+    if (customerName) {
+      try {
+        const customerNeedResponse = await fetch('https://api.linear.app/graphql', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.LINEAR_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: `
+              mutation CreateCustomerNeed($input: CustomerNeedCreateInput!) {
+                customerNeedCreate(input: $input) {
+                  success
+                }
+              }
+            `,
+            variables: {
+              input: {
+                issueId: issue.id,
+                body: `Customer: ${customerName}${priority ? `\nPriority: ${priority.replace('_', ' ')}` : ''}\n\nCreated via Slack workflow automation.`
+              },
+            },
+          }),
+        });
+        
+        const customerNeedData = await customerNeedResponse.json();
+        console.log('Customer need creation for workflow:', customerNeedData);
+      } catch (customerError) {
+        console.error('Error linking customer in workflow:', customerError);
+        // Don't fail the workflow for customer linking errors
+      }
+    }
+
+    // Complete the workflow step with outputs
+    await complete({
+      outputs: {
+        issue_id: issue.id,
+        issue_url: issue.url,
+        issue_identifier: issue.identifier
+      }
+    });
+
+    console.log('✅ Workflow step completed successfully');
+
+  } catch (error) {
+    console.error('❌ Workflow step execution failed:', error);
+    await fail({
+      error: {
+        message: `Failed to create feature request: ${error.message}`
+      }
+    });
+  }
+});
+
 // Start the app
 (async () => {
   // Fetch customer priority labels on startup
