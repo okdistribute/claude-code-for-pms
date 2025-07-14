@@ -164,10 +164,10 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
 
     console.log('Linear response:', JSON.stringify(response, null, 2));
     
-    // Post confirmation message
-    await client.chat.postMessage({
+    // Post confirmation as ephemeral message to the user only
+    await client.chat.postEphemeral({
       channel: metadata.channel,
-      thread_ts: metadata.message_ts,
+      user: body.user.id,
       text: `✅ Feature request created: ${response.identifier} - ${response.title}\n${response.url}`,
     });
 
