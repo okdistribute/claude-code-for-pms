@@ -775,8 +775,7 @@ async function linkCustomerToIssue(issueId, customerName, customerPriority) {
         variables: {
           input: {
             customerId: customerId,
-            issueId: issueId,
-            priority: priorityValue
+            issueId: issueId
           }
         }
       }, {
