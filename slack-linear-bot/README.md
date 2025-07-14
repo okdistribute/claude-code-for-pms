@@ -9,7 +9,7 @@ This bot converts Slack threads into Linear feature requests using Claude AI to 
 - Formats the content according to your feature request template
 - Creates the issue in Linear with proper formatting
 - Automatically applies customer priority labels (Nice to have, Must have soon, Must have now)
-- Links the Slack thread to the Linear issue for bidirectional comment syncing
+- Links the Slack thread to the Linear issue as an attachment
 - Posts confirmation back to the Slack thread
 
 ## Setup Instructions
@@ -64,10 +64,7 @@ npm start
 4. Review the generated title and preview
 5. Click "Create" to create the Linear issue
 
-The bot will automatically link the Slack thread to the created Linear issue. This enables:
-- Comments added to the Slack thread will sync to the Linear issue
-- Comments added to the Linear issue will sync back to the Slack thread
-- Status updates (completed/cancelled) will notify the Slack thread
+The bot will automatically link the Slack thread to the created Linear issue as an attachment, making it easy to reference the original conversation.
 
 ## Customer Priority Labels
 
@@ -127,6 +124,11 @@ For production deployment:
    ```
 
 2. Or deploy to a platform like Heroku, Railway, or Render
+
+## Limitations
+
+- **Thread Syncing**: The API-based approach creates a link attachment but doesn't enable full bidirectional comment syncing. Full sync is only available when creating issues through Linear's native Slack UI.
+- **Private Channels**: The bot needs to be invited to private channels to access threads there.
 
 ## Troubleshooting
 

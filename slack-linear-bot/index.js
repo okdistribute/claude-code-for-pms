@@ -247,8 +247,8 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
           issueId: issue.id
         });
         
-        // You can verify the sync in Linear - the Slack thread should appear as an attachment
-        // and comments should sync bidirectionally
+        // Note: The API creates a link attachment but doesn't enable full bidirectional sync
+        // Full sync is only available when creating issues through Linear's Slack UI
       }
     } catch (linkError) {
       console.error('Error linking Slack thread to Linear issue:', linkError);
@@ -256,10 +256,17 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     }
     
     // Post confirmation as ephemeral message to the user only
+    let confirmationText = `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}`;
+    
+    // Add link info if we successfully linked the Slack thread
+    if (issue && permalinkResult?.permalink) {
+      confirmationText += `\n\n🔗 Slack thread linked to the issue (view-only)`;
+    }
+    
     await client.chat.postEphemeral({
       channel: metadata.channel,
       user: body.user.id,
-      text: `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}\n\n💬 This Slack thread is now synced with the Linear issue. Comments here will appear in Linear and vice versa.`,
+      text: confirmationText,
     });
 
   } catch (error) {
