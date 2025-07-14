@@ -164,6 +164,51 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
 
     console.log('Linear response:', JSON.stringify(response, null, 2));
     
+    // Get the issue that was created to access its ID
+    const issue = await response.issue;
+    
+    // Get the Slack message permalink
+    try {
+      const permalinkResult = await client.chat.getPermalink({
+        channel: metadata.channel,
+        message_ts: metadata.message_ts,
+      });
+      
+      console.log('Slack permalink:', permalinkResult.permalink);
+      
+      // Link the Slack thread to the Linear issue
+      if (issue && permalinkResult.permalink) {
+        const attachmentResult = await linear.request(`
+          mutation attachmentLinkSlack(
+            $issueId: String!
+            $url: String!
+            $syncToCommentThread: Boolean
+          ) {
+            attachmentLinkSlack(
+              issueId: $issueId
+              url: $url
+              syncToCommentThread: $syncToCommentThread
+            ) {
+              success
+              attachment {
+                id
+                url
+              }
+            }
+          }
+        `, {
+          issueId: issue.id,
+          url: permalinkResult.permalink,
+          syncToCommentThread: true
+        });
+        
+        console.log('Slack thread linked:', JSON.stringify(attachmentResult, null, 2));
+      }
+    } catch (linkError) {
+      console.error('Error linking Slack thread to Linear issue:', linkError);
+      // Continue anyway - the issue was created successfully
+    }
+    
     // Post confirmation as ephemeral message to the user only
     await client.chat.postEphemeral({
       channel: metadata.channel,
