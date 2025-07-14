@@ -1296,6 +1296,34 @@ ${description}
 app.step(linearFeatureRequestStep);
 console.log('✅ Registered workflow step: create_linear_feature_request_step');
 
+// Add debug logging for any workflow-related events
+app.event('workflow_step_edit', async ({ event, logger, ack }) => {
+  await ack();
+  console.log('workflow_step_edit event received:', JSON.stringify(event, null, 2));
+});
+
+app.event('workflow_step_save', async ({ event, logger, ack }) => {
+  await ack();
+  console.log('workflow_step_save event received:', JSON.stringify(event, null, 2));
+});
+
+app.event('workflow_step_execute', async ({ event, logger, ack }) => {
+  await ack();
+  console.log('workflow_step_execute event received:', JSON.stringify(event, null, 2));
+});
+
+// Debug: Log all actions
+app.action(/.*/, async ({ action, ack }) => {
+  await ack();
+  console.log('Action received:', action.type, action.callback_id || action.action_id);
+});
+
+// Debug: Log all view submissions
+app.view(/.*/, async ({ view, ack }) => {
+  await ack();
+  console.log('View submission received:', view.callback_id);
+});
+
 // Start the app
 (async () => {
   // Fetch customer priority labels on startup
