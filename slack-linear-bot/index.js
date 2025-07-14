@@ -261,7 +261,19 @@ async function analyzeThread(threadText) {
 Thread:
 ${threadText}
 
-Create a feature request with this format:
+I'm going to give you a slack thread. Please make feature request tickets based
+on the following slack thread. There could be more than one feature request
+mentioned on this slack thread. Try to parse out if this issue is tied to a
+particular customer and what that customer's name is. Additionally, add a label
+for 'customer priority': one of: 
+- Nice to have, 
+- Must have soon, or 
+- Must have now (Blocker) 
+
+Once you've created the ticket(s), then look to see if there are any existing
+issues in linear on any team that look like they would be related to this
+ticket. List those links in a bulleted list in the text body of the feature
+request. reate a feature request with this format:
 
 ## Problem Statement
 What problem is the customer trying to solve? Detail everything you can learn about the use case.
