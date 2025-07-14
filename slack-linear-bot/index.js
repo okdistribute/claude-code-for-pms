@@ -766,16 +766,6 @@ async function linkCustomerToIssue(issueId, customerName, customerPriority) {
         mutation CustomerNeedCreate($input: CustomerNeedCreateInput!) {
           customerNeedCreate(input: $input) {
             success
-            customerNeed {
-              id
-              customer {
-                id
-                name
-              }
-              issue {
-                id
-              }
-            }
           }
         }
       `;
