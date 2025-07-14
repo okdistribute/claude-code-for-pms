@@ -143,17 +143,19 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     const analysis = metadata.analysis || {};
 
     // Create Linear issue
-    const issue = await linear.createIssue({
+    const response = await linear.createIssue({
       teamId: teamId,
       title: title || analysis.title || 'Feature Request from Slack',
       description: analysis.description || 'No description provided',
     });
 
+    console.log('Linear response:', JSON.stringify(response, null, 2));
+    
     // Post confirmation message
     await client.chat.postMessage({
       channel: metadata.channel,
       thread_ts: metadata.message_ts,
-      text: `✅ Feature request created: ${issue.issue.identifier} - ${issue.issue.title}\n${issue.issue.url}`,
+      text: `✅ Feature request created: ${response.identifier} - ${response.title}\n${response.url}`,
     });
 
   } catch (error) {
