@@ -811,7 +811,7 @@ for 'customer priority': one of:
 - Must have now (Blocker) 
 
 Once you've created the ticket(s), then look to see if there are any existing
-issues in linear on any team that look like they would be related to this
+issues in linear that look like they would be related to this
 ticket. List those links in a bulleted list in the text body of the feature
 request. reate a feature request with this format:
 
@@ -990,6 +990,9 @@ async function linkCustomerToIssue(issueId, customerName, comment) {
 const linearFeatureRequestStep = new WorkflowStep('create_linear_feature_request_step', {
   edit: async ({ ack, step, configure }) => {
     await ack();
+    
+    console.log('Workflow step edit triggered');
+    console.log('Step data:', JSON.stringify(step, null, 2));
 
   const blocks = [
     {
@@ -1092,9 +1095,13 @@ const linearFeatureRequestStep = new WorkflowStep('create_linear_feature_request
   ];
 
     await configure({ blocks });
+    console.log('Workflow step configuration modal opened');
   },
   save: async ({ ack, step, view, update }) => {
     await ack();
+    
+    console.log('Workflow step save triggered');
+    console.log('View state:', JSON.stringify(view.state, null, 2));
 
   const values = view.state.values;
   const title = values.title_input?.title?.value;
@@ -1127,9 +1134,16 @@ const linearFeatureRequestStep = new WorkflowStep('create_linear_feature_request
     }
   ];
 
+    console.log('Workflow step inputs configured:', JSON.stringify(inputs, null, 2));
+    console.log('Workflow step outputs configured:', JSON.stringify(outputs, null, 2));
+    
     await update({ inputs, outputs });
+    console.log('Workflow step configuration saved successfully');
   },
   execute: async ({ step, complete, fail }) => {
+    console.log('Workflow step execute triggered');
+    console.log('Step execution data:', JSON.stringify(step, null, 2));
+    
     try {
       const { inputs } = step;
     
@@ -1138,7 +1152,13 @@ const linearFeatureRequestStep = new WorkflowStep('create_linear_feature_request
     const customerName = inputs.customer_name?.value;
     const priority = inputs.priority?.value;
 
-    console.log('Executing workflow step:', { title, description, customerName, priority });
+    console.log('Executing workflow step with values:', { 
+      title, 
+      description, 
+      customerName, 
+      priority,
+      teamId: process.env.LINEAR_TEAM_ID
+    });
 
     // Create the Linear issue
     const issueDescription = `**Feature request from Slack workflow**
@@ -1180,13 +1200,21 @@ ${description}
     });
 
     const createIssueData = await createIssueResponse.json();
+    console.log('Linear API response:', JSON.stringify(createIssueData, null, 2));
     
     if (!createIssueData.data?.issueCreate?.success) {
+      console.error('Failed to create Linear issue in workflow');
+      console.error('Errors:', createIssueData.errors);
       throw new Error(`Failed to create Linear issue: ${JSON.stringify(createIssueData.errors)}`);
     }
 
     const issue = createIssueData.data.issueCreate.issue;
-    console.log('Workflow created Linear issue:', issue);
+    console.log('Workflow successfully created Linear issue:', {
+      id: issue.id,
+      identifier: issue.identifier,
+      title: issue.title,
+      url: issue.url
+    });
 
     // Link customer if provided
     if (customerName) {
@@ -1215,11 +1243,20 @@ ${description}
         });
         
         const customerNeedData = await customerNeedResponse.json();
-        console.log('Customer need creation for workflow:', customerNeedData);
+        console.log('Customer need creation response for workflow:', JSON.stringify(customerNeedData, null, 2));
+        
+        if (customerNeedData.data?.customerNeedCreate?.success) {
+          console.log('Successfully linked customer to workflow issue');
+        } else {
+          console.error('Failed to link customer:', customerNeedData.errors);
+        }
       } catch (customerError) {
-        console.error('Error linking customer in workflow:', customerError);
+        console.error('Error linking customer in workflow:', customerError.message);
+        console.error('Full error:', customerError);
         // Don't fail the workflow for customer linking errors
       }
+    } else {
+      console.log('No customer name provided in workflow, skipping customer linking');
     }
 
     // Complete the workflow step with outputs
@@ -1231,21 +1268,31 @@ ${description}
       }
     });
 
-    console.log('✅ Workflow step completed successfully');
+    console.log('✅ Workflow step completed successfully with outputs:', {
+      issue_id: issue.id,
+      issue_url: issue.url,
+      issue_identifier: issue.identifier
+    });
 
   } catch (error) {
-    console.error('❌ Workflow step execution failed:', error);
+    console.error('❌ Workflow step execution failed:', error.message);
+    console.error('Full error details:', error);
+    console.error('Stack trace:', error.stack);
+    
     await fail({
       error: {
         message: `Failed to create feature request: ${error.message}`
       }
     });
+    
+    console.log('Workflow step failed and reported error to Slack');
   }
 }
 });
 
 // Register the workflow step with the app
 app.step(linearFeatureRequestStep);
+console.log('✅ Registered workflow step: create_linear_feature_request_step');
 
 // Start the app
 (async () => {
