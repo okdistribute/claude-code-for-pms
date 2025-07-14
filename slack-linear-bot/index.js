@@ -114,12 +114,14 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
     console.log('Shortcut callback_id:', shortcut.callback_id);
     
     // For message shortcuts, extract channel and message info
-    let channel, message_ts;
+    let channel, message_ts, originalMessageText;
     
     if (shortcut.message) {
       // Message shortcut
       message_ts = shortcut.message.ts;
       channel = shortcut.channel.id;
+      originalMessageText = shortcut.message.text || '';
+      console.log('Original message text:', originalMessageText);
     } else {
       console.error('Unable to extract channel and message info from shortcut:', shortcut);
       throw new Error('Invalid shortcut payload');
@@ -130,76 +132,34 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
     console.log('Channel type:', shortcut.channel?.type);
     console.log('Is private:', shortcut.channel?.is_private);
     
-    // Open a modal immediately
+    // Open a loading modal initially
     const result = await client.views.open({
       trigger_id: shortcut.trigger_id,
       view: {
         type: 'modal',
-        callback_id: 'feature_request_modal',
+        callback_id: 'feature_request_loading',
         title: {
           type: 'plain_text',
           text: 'Create Feature Request',
-        },
-        submit: {
-          type: 'plain_text',
-          text: 'Create',
         },
         close: {
           type: 'plain_text',
           text: 'Cancel',
         },
-        private_metadata: JSON.stringify({ message_ts, channel }),
+        private_metadata: JSON.stringify({ message_ts, channel, originalMessageText }),
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: 'I\'ll analyze the thread and create a Linear feature request. You can customize the details below.',
+              text: '🤖 *Analyzing thread with AI...*\n\nPlease wait while I read the conversation and generate a feature request. This usually takes 5-10 seconds.',
             },
           },
           {
-            type: 'input',
-            block_id: 'title_block',
-            label: {
-              type: 'plain_text',
-              text: 'Title (will be auto-generated)',
-            },
-            element: {
-              type: 'plain_text_input',
-              action_id: 'title_input',
-              placeholder: {
-                type: 'plain_text',
-                text: 'Analyzing thread...',
-              },
-            },
-            optional: true,
-          },
-          {
-            type: 'input',
-            block_id: 'team_block',
-            label: {
-              type: 'plain_text',
-              text: 'Linear Team',
-            },
-            element: {
-              type: 'static_select',
-              action_id: 'team_select',
-              initial_option: {
-                text: {
-                  type: 'plain_text',
-                  text: 'Feature Requests (FEAT)',
-                },
-                value: process.env.LINEAR_TEAM_ID,
-              },
-              options: [
-                {
-                  text: {
-                    type: 'plain_text',
-                    text: 'Feature Requests (FEAT)',
-                  },
-                  value: process.env.LINEAR_TEAM_ID,
-                },
-              ],
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '⏳ Processing...',
             },
           },
         ],
@@ -207,7 +167,7 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
     });
 
     // Fetch and analyze the thread in the background
-    analyzeThreadAndUpdateModal(client, channel, message_ts, result.view.id, shortcut.user.id);
+    analyzeThreadAndUpdateModal(client, channel, message_ts, result.view.id, shortcut.user.id, originalMessageText);
 
   } catch (error) {
     logger.error(error);
@@ -226,9 +186,12 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     // Get the stored analysis from the modal's private metadata
     const analysis = metadata.analysis || {};
     
+    // Check if there's a manual description input (for fallback cases)
+    const manualDescription = view.state.values.description_block?.description_input?.value;
+    
     // Validate that we have meaningful content
     const finalTitle = title || analysis.title;
-    const finalDescription = analysis.description;
+    const finalDescription = manualDescription || analysis.description;
     
     if (!finalTitle || finalTitle === 'Feature Request from Slack' || !finalDescription || finalDescription === 'No description provided') {
       await client.chat.postEphemeral({
@@ -268,7 +231,7 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
     // Link customer to the issue if customer name was extracted
     if (analysis.customerName) {
       console.log(`Attempting to link customer: ${analysis.customerName}`);
-      const customerLinkResult = await linkCustomerToIssue(issue.id, analysis.customerName, analysis.customerPriority);
+      const customerLinkResult = await linkCustomerToIssue(issue.id, analysis.customerName, metadata.originalMessageText);
       
       if (customerLinkResult && customerLinkResult.success) {
         console.log(`✅ Successfully linked customer ${customerLinkResult.customer.name} to issue`);
@@ -334,7 +297,7 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
   }
 });
 
-async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id, user_id) {
+async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id, user_id, originalMessageText) {
   try {
     // Fetch the thread
     let thread;
@@ -350,22 +313,49 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
       console.error('Channel:', channel);
       console.error('Message TS:', message_ts);
       
-      // Try to fetch just the single message as a fallback
+      // Try different approaches to fetch the thread
       try {
-        const result = await client.conversations.history({
+        // First try: Get conversation history around the message timestamp
+        const historyResult = await client.conversations.history({
           channel: channel,
           latest: message_ts,
-          limit: 1,
+          limit: 50,
           inclusive: true,
         });
         
-        if (result.messages && result.messages.length > 0) {
-          thread = { messages: [result.messages[0]] };
+        if (historyResult.messages && historyResult.messages.length > 0) {
+          // Check if this message is part of a thread
+          const originalMessage = historyResult.messages.find(msg => msg.ts === message_ts);
+          
+          if (originalMessage && originalMessage.thread_ts) {
+            // This is a threaded message, try to get the full thread
+            try {
+              const threadResult = await client.conversations.replies({
+                channel: channel,
+                ts: originalMessage.thread_ts,
+                limit: 100,
+                inclusive: true,
+              });
+              
+              if (threadResult.messages && threadResult.messages.length > 0) {
+                thread = threadResult;
+                console.log(`Successfully fetched thread with ${thread.messages.length} messages using thread_ts`);
+              } else {
+                thread = { messages: [originalMessage] };
+              }
+            } catch (threadError) {
+              console.error('Error fetching thread using thread_ts:', threadError);
+              thread = { messages: [originalMessage] };
+            }
+          } else {
+            // Not a threaded message, use the original message
+            thread = { messages: [originalMessage || historyResult.messages[0]] };
+          }
         } else {
-          throw new Error('No message found');
+          throw new Error('No messages found in history');
         }
       } catch (fallbackError) {
-        console.error('Fallback also failed:', fallbackError);
+        console.error('All fallback attempts failed:', fallbackError);
         
         // Create a minimal feature request without thread context
         const analysis = {
@@ -395,14 +385,15 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
             private_metadata: JSON.stringify({ 
               message_ts, 
               channel,
-              analysis 
+              analysis,
+              originalMessageText
             }),
             blocks: [
               {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: '⚠️ Unable to access the thread. Please enter the details manually:',
+                  text: '⚠️ *Unable to access the thread*\n\nPlease enter the feature request details manually:',
                 },
               },
               {
@@ -447,6 +438,23 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
                       value: process.env.LINEAR_TEAM_ID,
                     },
                   ],
+                },
+              },
+              {
+                type: 'input',
+                block_id: 'description_block',
+                label: {
+                  type: 'plain_text',
+                  text: 'Description',
+                },
+                element: {
+                  type: 'plain_text_input',
+                  action_id: 'description_input',
+                  multiline: true,
+                  placeholder: {
+                    type: 'plain_text',
+                    text: 'Enter feature request description...',
+                  },
                 },
               },
             ],
@@ -532,14 +540,15 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
         private_metadata: JSON.stringify({ 
           message_ts, 
           channel,
-          analysis 
+          analysis,
+          originalMessageText
         }),
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '✅ Thread analyzed! Review and edit the details below:',
+              text: '✅ *Thread analyzed successfully!*\n\nReview and edit the details below before creating the feature request:',
             },
           },
           {
@@ -587,7 +596,7 @@ async function analyzeThreadAndUpdateModal(client, channel, message_ts, view_id,
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*Preview:*\n${analysis.preview}${analysis.customerName ? `\n\n*Customer:* ${analysis.customerName}` : ''}`,
+              text: `*Preview:*\n${analysis.preview}${analysis.customerName ? `\n\n*Customer:* ${analysis.customerName}` : ''}${analysis.customerPriority ? `\n*Priority:* ${analysis.customerPriority.replace('_', ' ')}` : ''}`,
             },
           },
         ],
@@ -699,21 +708,13 @@ Please return ONLY a valid JSON object (no additional text) with:
 }
 
 // Function to find or create a customer and link to issue
-async function linkCustomerToIssue(issueId, customerName, customerPriority) {
+async function linkCustomerToIssue(issueId, customerName, comment) {
   if (!customerName || customerName.trim() === '') {
     console.log('No customer name provided, skipping customer linking');
     return null;
   }
 
-  // Map customer priority to numeric value
-  let priorityValue = 1; // Default
-  if (customerPriority === 'must_have_now') {
-    priorityValue = 3;
-  } else if (customerPriority === 'must_have_soon') {
-    priorityValue = 2;
-  } else if (customerPriority === 'nice_to_have') {
-    priorityValue = 1;
-  }
+  console.log('Linking customer with comment:', comment);
 
   try {
     // First, try to find existing customer
@@ -775,6 +776,7 @@ async function linkCustomerToIssue(issueId, customerName, customerPriority) {
         variables: {
           input: {
             customerId: customerId,
+            body: comment,
             issueId: issueId
           }
         }
@@ -838,3 +840,9 @@ async function linkCustomerToIssue(issueId, customerName, customerPriority) {
   await app.start();
   console.log('⚡️ Slack Linear bot is running!');
 })();
+
+// Handle loading modal (no action needed, just prevent errors)
+app.view('feature_request_loading', async ({ ack }) => {
+  await ack();
+  // Modal was closed during loading - no action needed
+});
