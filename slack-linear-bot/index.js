@@ -230,24 +230,26 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       
       // Link the Slack thread to the Linear issue
       if (issue && permalinkResult.permalink) {
-        const attachmentResult = await linear.attachmentLinkSlack({
-          issueId: issue.id,
-          url: permalinkResult.permalink,
-          syncToCommentThread: true,
-          title: "Slack conversation"
-        });
+        try {
+          // Create a regular attachment linking to the Slack thread
+          // The attachmentLinkSlack method seems to have issues with the SDK
+          const attachmentResult = await linear.attachmentCreate({
+            issueId: issue.id,
+            url: permalinkResult.permalink,
+            title: "Slack conversation"
+          });
+          
+          const attachment = await attachmentResult.attachment;
+          console.log('Created Slack attachment:', {
+            attachmentId: attachment?.id,
+            attachmentUrl: attachment?.url,
+            issueId: issue.id
+          });
+        } catch (attachError) {
+          console.error('Failed to create Slack attachment:', attachError);
+        }
         
-        // Wait for the attachment to be created
-        const attachment = await attachmentResult.attachment;
-        
-        console.log('Slack thread linked:', {
-          success: attachmentResult.success,
-          attachmentId: attachment?.id,
-          attachmentUrl: attachment?.url,
-          issueId: issue.id
-        });
-        
-        // Note: The API creates a link attachment but doesn't enable full bidirectional sync
+        // Note: This creates a link attachment but doesn't enable full bidirectional sync
         // Full sync is only available when creating issues through Linear's Slack UI
       }
     } catch (linkError) {
