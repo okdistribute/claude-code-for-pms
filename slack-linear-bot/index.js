@@ -121,7 +121,6 @@ app.shortcut('create_feature_request', async ({ shortcut, ack, client, logger })
       message_ts = shortcut.message.ts;
       channel = shortcut.channel.id;
       originalMessageText = shortcut.message.text || '';
-      console.log('Original message text:', originalMessageText);
     } else {
       console.error('Unable to extract channel and message info from shortcut:', shortcut);
       throw new Error('Invalid shortcut payload');
@@ -267,25 +266,6 @@ app.view('feature_request_modal', async ({ ack, body, view, client, logger }) =>
       console.error('Error linking Slack thread to Linear issue:', linkError);
       // Continue anyway - the issue was created successfully
     }
-    
-    // Post confirmation message to the user
-    let confirmationText = `✅ Feature request created: ${issue.identifier} - ${issue.title}\n${issue.url}`;
-    
-    // Add customer info if available
-    if (analysis.customerName) {
-      confirmationText += `\n👤 Customer: ${analysis.customerName}`;
-    }
-    
-    // Add Slack thread link info if successful
-    if (permalinkResult?.permalink) {
-      confirmationText += `\n🔗 Slack thread linked to the issue`;
-    }
-    
-    await client.chat.postEphemeral({
-      channel: metadata.channel,
-      user: body.user.id,
-      text: confirmationText,
-    });
     
   } catch (error) {
     logger.error(error);
@@ -791,17 +771,6 @@ async function linkCustomerToIssue(issueId, customerName, comment) {
 
       if (createNeedResponse.data.errors) {
         console.error('GraphQL errors creating customer need:', createNeedResponse.data.errors);
-        return null;
-      }
-
-      if (createNeedResponse.data.data?.customerNeedCreate?.success) {
-        console.log(`✅ Successfully created customer need for ${customerName} on issue ${issueId}`);
-        return {
-          success: true,
-          customer: createNeedResponse.data.data.customerNeedCreate.customerNeed.customer
-        };
-      } else {
-        console.error('Failed to create customer need - no success in response');
         return null;
       }
     }
