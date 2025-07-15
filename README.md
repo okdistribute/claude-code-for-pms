@@ -51,7 +51,7 @@ To use it, simply type:
 
 
 
-### 2. Generate shape up pitch
+### 3. Generate shape up pitch
 
 Once you've received one or more feature requests, reviewed them and tied them
 to customers, you then can move into the planning stage to get this work
@@ -90,21 +90,6 @@ If you prefer to specify everything upfront:
 
 Linear issues are saved in `./pitches/` with naming convention:
 - `pitch-YYYY-MM-DD-feature-name.md`
-
-### Integration with Linear
-
-The generated markdown files can be:
-1. Automatically created in Linear using the `--create` flag
-2. Manually copied into Linear's issue creation interface
-3. Used as templates for further refinement
-
-```bash
-# View generated issue
-cat pitches/pitch-*.md
-
-# Create directly in Linear
-./generate-pitch.sh --title "Your issue" --team-id "abc123" --create
-```
 
 ## MCP Server Configuration
 
