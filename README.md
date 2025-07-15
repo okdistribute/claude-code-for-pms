@@ -91,38 +91,6 @@ If you prefer to specify everything upfront:
 Linear issues are saved in `./pitches/` with naming convention:
 - `pitch-YYYY-MM-DD-feature-name.md`
 
-## MCP Server Configuration
-
-### Slack Server
-
-Official MCP server that provides:
-- Thread conversation access (primary use case)
-- Channel message history
-- User information
-- Message search capabilities
-
-### Linear Server  
-
-MCP server for Linear integration:
-- Create issues directly
-- Reference existing issues
-- Access team and project information
-- Manage issue states and labels
-
-### Notion Server
-
-MCP server for documentation:
-- Access Notion pages
-- Search documentation
-- Reference specs and requirements
-
-### Filesystem Access
-
-Claude Code's built-in capabilities for:
-- Local file analysis
-- Code pattern matching
-- Project structure understanding
-
 
 ### Verbose Mode
 
@@ -132,13 +100,6 @@ Use `-v` or `--verbose` to see Claude's real-time processing:
 ./generate-pitch.sh --title "Performance optimization" \
   --team-id "abc123" --verbose
 ```
-
-This shows:
-- MCP server calls being made
-- Data being fetched from each source
-- Claude's analysis process
-- Issue generation progress
-
 
 
 ## Troubleshooting
