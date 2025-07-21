@@ -10,13 +10,12 @@ just file paths.
 $ARGUMENTS
 </thread>
 
-Think deeply. Did I give you enough information to create a feature request? do you need to ask me for more conext before getitng strated?
+Think deeply. Did I give you enough information to create a feature request? Do you need to ask me for more context before getting started?
 
-In the FEAT team in linear, please make feature request
-tickets based on the following
-slack thread. There could be more than one feature request mentioned on this
+In the FEAT team in Linear, please make feature request
+tickets based on the following slack thread. There could be more than one feature request mentioned on this
 slack thread. Intelligently try to parse out if this issue is tied to a
-particular customer and what that customer's name is. additionally, add a label
+particular customer and what that customer's name is. Additionally, add a label
 for 'customer priority': either Nice to have, must have soon, or must have now
 (Blocker)
 
