@@ -20,11 +20,11 @@ particular customer and what that customer's name is. additionally, add a label
 for 'customer priority': either Nice to have, must have soon, or must have now
 (Blocker)
 
-Once you've created the ticket(s), then look to see if there are any existing
-issues in linear on any team that look like they would be related to this
-ticket. Please mark them 'related to' in linear. Do not add them as links to
-the ticket, if you can't add related issues then just list them in a bulleted
-list in the text body of the feature request.
+Once you've created the ticket(s), then:
+1. Add any existing issues in linear on any team that look like they would be related to this
+ticket.
+2. Search for the customer's ID based on the name provided in the message.
+3. Add the customer as a customer request to the linear issue. 
 
 
 Use this format for output in the linear issue:
@@ -41,3 +41,6 @@ Suggested Solution
 
 If there's a clear thing that needs to be done "e.g. deliver X" then add it, otherwise leave this blank
 
+Deadline
+
+If there is any clear deadline, summarize it here.
